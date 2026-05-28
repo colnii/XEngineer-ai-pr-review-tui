@@ -2,6 +2,8 @@
 
 A terminal UI for reviewing public GitHub Pull Requests with deterministic rules and AI assistance.
 
+中文文档见 [README.zh-CN.md](README.zh-CN.md).
+
 ## Quick Start
 
 ```bash
@@ -26,6 +28,12 @@ the `socksio` dependency is installed.
 
 ```bash
 xpr-review --mock-llm
+```
+
+The TUI defaults to Chinese. To start in English:
+
+```bash
+xpr-review --language en
 ```
 
 For real model output:

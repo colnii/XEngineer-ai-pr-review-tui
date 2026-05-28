@@ -1,93 +1,125 @@
 from __future__ import annotations
 
+from xengineer_pr_review.locale import (
+    display_confidence,
+    display_llm_status,
+    display_severity,
+    display_source,
+    display_suggestion_type,
+    label,
+    normalize_language,
+    translate_builtin_text,
+)
 from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
 
 
-def render_markdown(report: ReviewReport) -> str:
+def render_markdown(report: ReviewReport, language: str = "zh") -> str:
+    language = normalize_language(language)
     ai_risks = [finding for finding in report.findings if finding.source == "ai"]
     rule_signals = [finding for finding in report.findings if finding.source == "rule"]
-    review_mode = "Rules + LLM" if report.llm_status != "failed" else "Rules only"
+    review_mode_key = "mode.rules_llm" if report.llm_status != "failed" else "mode.rules_only"
+    unknown = label("common.unknown", language)
     lines: list[str] = [
-        "# AI PR Review Report",
+        f"# {label('report.title', language)}",
         "",
-        f"- PR: [{report.pr_title}]({report.pr_url})",
-        f"- Repository: {report.repo or 'unknown'}",
-        f"- PR number: {report.pr_number if report.pr_number is not None else 'unknown'}",
-        f"- Author: {report.author or 'unknown'}",
-        f"- Files changed: {len(report.changed_files)}",
-        f"- Additions / deletions: +{report.additions} / -{report.deletions}",
-        f"- Review mode: {review_mode}",
-        f"- LLM status: {report.llm_status}",
+        f"- {label('report.pr', language)}: [{report.pr_title}]({report.pr_url})",
+        f"- {label('report.repository', language)}: {report.repo or unknown}",
+        f"- {label('report.pr_number', language)}: "
+        f"{report.pr_number if report.pr_number is not None else unknown}",
+        f"- {label('report.author', language)}: {report.author or unknown}",
+        f"- {label('report.files_changed', language)}: {len(report.changed_files)}",
+        f"- {label('report.additions_deletions', language)}: "
+        f"+{report.additions} / -{report.deletions}",
+        f"- {label('report.review_mode', language)}: {label(review_mode_key, language)}",
+        f"- {label('report.llm_status', language)}: "
+        f"{display_llm_status(report.llm_status, language)}",
         "",
-        "## Summary",
+        f"## {label('report.summary', language)}",
         "",
         report.summary,
         "",
-        "## Risk Assessment",
+        f"## {label('report.risk_assessment', language)}",
         "",
-        "### AI-Identified Risks",
+        f"### {label('report.ai_risks', language)}",
         "",
     ]
 
     if ai_risks:
         for finding in ai_risks:
-            lines.extend(_render_finding(finding))
+            lines.extend(_render_finding(finding, language))
     else:
-        lines.append("- No AI-identified risks were parsed.")
+        lines.append(f"- {label('report.no_ai_risks', language)}")
 
-    lines.extend(["", "### Rule-Based Signals", ""])
+    lines.extend(["", f"### {label('report.rule_signals', language)}", ""])
     if rule_signals:
         for finding in rule_signals:
-            lines.extend(_render_finding(finding))
+            lines.extend(_render_finding(finding, language))
     else:
-        lines.append("- No deterministic risk signals.")
+        lines.append(f"- {label('report.no_rule_signals', language)}")
 
-    lines.extend(["", "## Review Suggestions", ""])
+    lines.extend(["", f"## {label('report.review_suggestions', language)}", ""])
     if report.suggestions:
         for suggestion in report.suggestions:
-            lines.extend(_render_suggestion(suggestion))
+            lines.extend(_render_suggestion(suggestion, language))
     else:
-        lines.append("- No AI suggestions were generated.")
+        lines.append(f"- {label('report.no_ai_suggestions', language)}")
 
-    lines.extend(["", "## Changed Files", ""])
+    lines.extend(["", f"## {label('report.changed_files', language)}", ""])
     lines.extend(f"- `{path}`" for path in report.changed_files)
 
-    lines.extend(["", "## Coverage Notes", ""])
+    lines.extend(["", f"## {label('report.coverage_notes', language)}", ""])
     if report.omitted_files:
-        lines.append("The LLM prompt omitted these files because of context limits:")
+        lines.append(label("report.omitted_files", language))
         lines.extend(f"- `{path}`" for path in report.omitted_files)
     else:
-        lines.append("- All changed files were included in the LLM context.")
+        lines.append(f"- {label('report.all_files_included', language)}")
 
     if report.ai_notes:
-        lines.extend(["", "## AI Notes", "", report.ai_notes])
+        lines.extend(["", f"## {label('report.ai_notes', language)}", "", report.ai_notes])
 
     if report.raw_ai_output:
-        lines.extend(["", "## Raw AI Output", "", report.raw_ai_output])
+        lines.extend(
+            ["", f"## {label('report.raw_ai_output', language)}", "", report.raw_ai_output]
+        )
 
     if report.warnings:
-        lines.extend(["", "## Warnings", ""])
+        lines.extend(["", f"## {label('report.warnings', language)}", ""])
         lines.extend(f"- {warning}" for warning in report.warnings)
 
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _render_finding(finding: ReviewFinding) -> list[str]:
-    files = ", ".join(f"`{path}`" for path in finding.files) if finding.files else "n/a"
+def _render_finding(finding: ReviewFinding, language: str) -> list[str]:
+    files = (
+        ", ".join(f"`{path}`" for path in finding.files)
+        if finding.files
+        else label("common.none", language)
+    )
     return [
-        f"- **Severity:** {finding.severity}",
-        f"  - **Source:** {finding.source}",
-        f"  - **Title:** {finding.title}",
-        f"  - **Explanation:** {finding.explanation}",
-        f"  - **Related files:** {files}",
+        f"- **{label('report.severity', language)}:** "
+        f"{display_severity(finding.severity, language)}",
+        f"  - **{label('report.source', language)}:** "
+        f"{display_source(finding.source, language)}",
+        f"  - **{label('report.finding_title', language)}:** "
+        f"{translate_builtin_text(finding.title, language)}",
+        f"  - **{label('report.explanation', language)}:** "
+        f"{translate_builtin_text(finding.explanation, language)}",
+        f"  - **{label('report.related_files', language)}:** {files}",
     ]
 
 
-def _render_suggestion(suggestion: ReviewSuggestion) -> list[str]:
-    files = ", ".join(f"`{path}`" for path in suggestion.files) if suggestion.files else "n/a"
+def _render_suggestion(suggestion: ReviewSuggestion, language: str) -> list[str]:
+    files = (
+        ", ".join(f"`{path}`" for path in suggestion.files)
+        if suggestion.files
+        else label("common.none", language)
+    )
     return [
-        f"- **Type:** {suggestion.suggestion_type}",
-        f"  - **Suggestion:** {suggestion.body}",
-        f"  - **Related file:** {files}",
-        f"  - **Confidence:** {suggestion.confidence}",
+        f"- **{label('report.type', language)}:** "
+        f"{display_suggestion_type(suggestion.suggestion_type, language)}",
+        f"  - **{label('report.suggestion', language)}:** "
+        f"{translate_builtin_text(suggestion.body, language)}",
+        f"  - **{label('report.related_file', language)}:** {files}",
+        f"  - **{label('report.confidence', language)}:** "
+        f"{display_confidence(suggestion.confidence, language)}",
     ]

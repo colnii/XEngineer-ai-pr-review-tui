@@ -18,10 +18,15 @@ def test_parse_url_with_extra_path() -> None:
 
 
 def test_reject_non_github_url() -> None:
-    with pytest.raises(ValueError, match="GitHub PR URL"):
+    with pytest.raises(ValueError, match="GitHub PR URL|GitHub PR 地址"):
         parse_pr_url("https://example.com/owner/repo/pull/1")
 
 
 def test_reject_url_without_pull_number() -> None:
     with pytest.raises(ValueError, match="/pull/<number>"):
         parse_pr_url("https://github.com/owner/repo/issues/1")
+
+
+def test_error_messages_default_to_chinese() -> None:
+    with pytest.raises(ValueError, match="期望 GitHub PR 地址"):
+        parse_pr_url("https://example.com/owner/repo/pull/1")

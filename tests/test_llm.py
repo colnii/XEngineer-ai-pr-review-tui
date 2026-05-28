@@ -4,9 +4,23 @@ from xengineer_pr_review.llm import MockLLMClient, parse_llm_output
 def test_mock_llm_returns_structured_sections() -> None:
     result = MockLLMClient().analyze("PR title: demo")
 
-    assert result.summary
+    assert "模拟摘要" in result.summary
     assert result.suggestions
     assert result.warnings == []
+
+
+def test_mock_llm_can_return_english_output() -> None:
+    result = MockLLMClient(language="en").analyze("PR title: demo")
+
+    assert result.summary.startswith("Mock summary")
+
+
+def test_openai_prompt_uses_selected_language_instruction() -> None:
+    prompt = MockOpenAILLMClient(language="zh").build_input("PR title: demo")
+
+    assert "请使用中文" in prompt
+    assert "JSON key" in prompt
+    assert "summary" in prompt
 
 
 def test_parse_llm_json_output() -> None:
@@ -101,3 +115,14 @@ def test_parse_llm_unstructured_output_falls_back_to_raw_output() -> None:
     assert result.summary == "AI review returned unstructured notes."
     assert result.raw_output == "Looks okay overall, but I would inspect the tests manually."
     assert result.warnings == ["LLM output could not be parsed into structured sections."]
+
+
+class MockOpenAILLMClient:
+    def __init__(self, language: str) -> None:
+        from xengineer_pr_review.llm import OpenAILLMClient
+
+        self.client = OpenAILLMClient.__new__(OpenAILLMClient)
+        self.client.language = language
+
+    def build_input(self, prompt: str) -> str:
+        return self.client._build_input(prompt)
