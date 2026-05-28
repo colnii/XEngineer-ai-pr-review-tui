@@ -11,6 +11,9 @@ pip install -e ".[dev]"
 xpr-review
 ```
 
+If your shell uses a SOCKS proxy, rerun `pip install -e ".[dev]"` after pulling updates so
+the `socksio` dependency is installed.
+
 ## Current Scope
 
 - Public GitHub PRs only.
