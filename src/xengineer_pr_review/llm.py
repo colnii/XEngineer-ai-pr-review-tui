@@ -9,6 +9,7 @@ from typing import Any
 
 from openai import OpenAI
 
+from xengineer_pr_review.locale import normalize_language, prompt_language_instruction
 from xengineer_pr_review.models import ReviewFinding, ReviewSuggestion
 
 
@@ -67,15 +68,46 @@ def parse_llm_output(text: str) -> LLMResult:
 
 
 class MockLLMClient:
+    def __init__(self, language: str = "zh") -> None:
+        self.language = normalize_language(language)
+
     def analyze(self, prompt: str) -> LLMResult:
+        if self.language == "en":
+            return LLMResult(
+                summary="Mock summary: this PR changes code that should be reviewed for behavior and tests.",
+                risks=[
+                    ReviewFinding(
+                        severity="low",
+                        source="ai",
+                        title="Manual behavior review recommended",
+                        explanation=(
+                            "The mock reviewer cannot inspect runtime behavior beyond the provided diff."
+                        ),
+                        files=[],
+                    )
+                ],
+                suggestions=[
+                    ReviewSuggestion(
+                        severity="medium",
+                        suggestion_type="test",
+                        title="Review behavior and tests",
+                        body=(
+                            "Check whether the changed code has enough test coverage and "
+                            "preserves compatibility."
+                        ),
+                        files=[],
+                        confidence="medium",
+                    )
+                ],
+            )
         return LLMResult(
-            summary="Mock summary: this PR changes code that should be reviewed for behavior and tests.",
+            summary="模拟摘要：这个 PR 修改了代码，需要重点复核行为变化和测试覆盖。",
             risks=[
                 ReviewFinding(
                     severity="low",
                     source="ai",
-                    title="Manual behavior review recommended",
-                    explanation="The mock reviewer cannot inspect runtime behavior beyond the provided diff.",
+                    title="建议人工复核行为",
+                    explanation="模拟审查器只能基于提供的 diff 判断，无法检查真实运行时行为。",
                     files=[],
                 )
             ],
@@ -83,8 +115,8 @@ class MockLLMClient:
                 ReviewSuggestion(
                     severity="medium",
                     suggestion_type="test",
-                    title="Review behavior and tests",
-                    body="Check whether the changed code has enough test coverage and preserves compatibility.",
+                    title="复核行为和测试",
+                    body="检查变更是否有足够测试覆盖，并确认兼容性没有被破坏。",
                     files=[],
                     confidence="medium",
                 )
@@ -93,23 +125,28 @@ class MockLLMClient:
 
 
 class OpenAILLMClient:
-    def __init__(self, model: str = "gpt-4.1-mini") -> None:
+    def __init__(self, model: str = "gpt-4.1-mini", language: str = "zh") -> None:
         self.model = model
+        self.language = normalize_language(language)
         self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     def analyze(self, prompt: str) -> LLMResult:
         response = self.client.responses.create(
             model=self.model,
-            input=(
-                "You are a pragmatic senior engineer reviewing a GitHub PR. "
-                "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
-                "Risk items must include severity, title, explanation, and files. "
-                "Suggestion items must include type, text, related_file, and confidence.\n\n"
-                f"{prompt}"
-            ),
+            input=self._build_input(prompt),
         )
         text = response.output_text.strip()
         return parse_llm_output(text)
+
+    def _build_input(self, prompt: str) -> str:
+        return (
+            "You are a pragmatic senior engineer reviewing a GitHub PR. "
+            "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
+            "Risk items must include severity, title, explanation, and files. "
+            "Suggestion items must include type, text, related_file, and confidence. "
+            f"{prompt_language_instruction(self.language)}\n\n"
+            f"{prompt}"
+        )
 
 
 def _parse_json_output(text: str) -> LLMResult | None:

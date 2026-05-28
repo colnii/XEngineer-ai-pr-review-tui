@@ -35,10 +35,42 @@ def test_render_markdown_contains_report_sections() -> None:
 
     markdown = render_markdown(report)
 
+    assert "# AI PR 审查报告" in markdown
+    assert "## 摘要" in markdown
+    assert "敏感路径变更" in markdown
+    assert "认证路径发生变更" in markdown
+    assert "Add coverage for auth behavior." in markdown
+
+
+def test_render_markdown_can_render_english_report() -> None:
+    report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        repo="owner/repo",
+        pr_number=1,
+        author="alice",
+        additions=3,
+        deletions=1,
+        summary="Summary text",
+        findings=[
+            ReviewFinding(
+                severity="high",
+                title="Sensitive path changed",
+                explanation="Auth path changed.",
+                files=["src/auth.py"],
+            )
+        ],
+        suggestions=[],
+        changed_files=["src/auth.py"],
+        omitted_files=[],
+        warnings=[],
+    )
+
+    markdown = render_markdown(report, language="en")
+
     assert "# AI PR Review Report" in markdown
     assert "## Summary" in markdown
-    assert "Sensitive path changed" in markdown
-    assert "Add coverage for auth behavior." in markdown
+    assert "**Severity:** high" in markdown
 
 
 def test_render_markdown_uses_formal_report_structure_without_nested_llm_markdown() -> None:
@@ -83,7 +115,7 @@ def test_render_markdown_uses_formal_report_structure_without_nested_llm_markdow
         llm_status="ok",
     )
 
-    markdown = render_markdown(report)
+    markdown = render_markdown(report, language="en")
 
     assert "## Risk Assessment" in markdown
     assert "### AI-Identified Risks" in markdown
