@@ -35,6 +35,13 @@ export OPENAI_API_KEY="..."
 xpr-review
 ```
 
+If GitHub anonymous API requests are rate limited, provide a GitHub token:
+
+```bash
+export GITHUB_TOKEN="$(gh auth token)"
+xpr-review --mock-llm
+```
+
 Paste a public PR URL such as:
 
 ```text

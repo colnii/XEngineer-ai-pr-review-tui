@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import httpx
 
 from xengineer_pr_review.diff_parser import parse_unified_diff
@@ -8,7 +10,11 @@ from xengineer_pr_review.models import PullRequestData, PullRequestRef
 
 class GitHubClient:
     def __init__(self, timeout: float = 20.0) -> None:
-        self.client = httpx.Client(timeout=timeout, headers={"User-Agent": "xengineer-pr-review"})
+        headers = {"User-Agent": "xengineer-pr-review"}
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        self.client = httpx.Client(timeout=timeout, headers=headers)
 
     def fetch_pr(self, ref: PullRequestRef) -> PullRequestData:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
