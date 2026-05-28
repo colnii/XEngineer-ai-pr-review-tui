@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field
 
 
 Severity = Literal["high", "medium", "low"]
+FindingSource = Literal["rule", "ai"]
+SuggestionType = Literal["comment", "test", "maintainability", "edge-case"]
+Confidence = Literal["high", "medium", "low"]
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,7 @@ class PullRequestData:
 
 class ReviewFinding(BaseModel):
     severity: Severity
+    source: FindingSource = "rule"
     title: str
     explanation: str
     files: list[str] = Field(default_factory=list)
@@ -44,17 +48,27 @@ class ReviewFinding(BaseModel):
 
 class ReviewSuggestion(BaseModel):
     severity: Severity
+    suggestion_type: SuggestionType = "maintainability"
     title: str
     body: str
     files: list[str] = Field(default_factory=list)
+    confidence: Confidence = "medium"
 
 
 class ReviewReport(BaseModel):
     pr_title: str
     pr_url: str
+    repo: str = ""
+    pr_number: int | None = None
+    author: str = ""
+    additions: int = 0
+    deletions: int = 0
     summary: str
     findings: list[ReviewFinding] = Field(default_factory=list)
     suggestions: list[ReviewSuggestion] = Field(default_factory=list)
     changed_files: list[str] = Field(default_factory=list)
     omitted_files: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    llm_status: str = "unknown"
+    ai_notes: str = ""
+    raw_ai_output: str = ""
