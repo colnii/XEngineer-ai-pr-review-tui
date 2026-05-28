@@ -1,4 +1,7 @@
+import httpx
+
 from xengineer_pr_review.github import GitHubClient
+from xengineer_pr_review.models import PullRequestRef
 
 
 def test_github_client_uses_github_token_header(monkeypatch) -> None:
@@ -31,3 +34,41 @@ def test_github_client_supports_socks_proxy_environment(monkeypatch) -> None:
     client = GitHubClient()
 
     assert client.client is not None
+
+
+def test_fetch_pr_follows_diff_redirect() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == "https://api.github.com/repos/owner/repo/pulls/1":
+            return httpx.Response(
+                200,
+                json={
+                    "title": "Demo PR",
+                    "user": {"login": "alice"},
+                    "base": {"ref": "main"},
+                    "head": {"ref": "feature"},
+                },
+            )
+        if str(request.url) == "https://github.com/owner/repo/pull/1.diff":
+            return httpx.Response(
+                302,
+                headers={"Location": "https://patch-diff.githubusercontent.com/raw/owner/repo/pull/1.diff"},
+            )
+        if str(request.url) == "https://patch-diff.githubusercontent.com/raw/owner/repo/pull/1.diff":
+            return httpx.Response(
+                200,
+                text="""diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1,2 @@
+-old = True
++new = True
+""",
+            )
+        return httpx.Response(404)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert pr.title == "Demo PR"
+    assert [file.path for file in pr.files] == ["src/app.py"]

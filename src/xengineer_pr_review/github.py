@@ -9,12 +9,17 @@ from xengineer_pr_review.models import PullRequestData, PullRequestRef
 
 
 class GitHubClient:
-    def __init__(self, timeout: float = 20.0) -> None:
+    def __init__(self, timeout: float = 20.0, transport: httpx.BaseTransport | None = None) -> None:
         headers = {"User-Agent": "xengineer-pr-review"}
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        self.client = httpx.Client(timeout=timeout, headers=headers)
+        self.client = httpx.Client(
+            timeout=timeout,
+            headers=headers,
+            follow_redirects=True,
+            transport=transport,
+        )
 
     def fetch_pr(self, ref: PullRequestRef) -> PullRequestData:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
