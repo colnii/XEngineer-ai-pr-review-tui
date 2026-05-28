@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 import httpx
 
@@ -11,7 +12,7 @@ from xengineer_pr_review.models import PullRequestData, PullRequestRef
 class GitHubClient:
     def __init__(self, timeout: float = 20.0, transport: httpx.BaseTransport | None = None) -> None:
         headers = {"User-Agent": "xengineer-pr-review"}
-        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        token = _resolve_github_token()
         if token:
             headers["Authorization"] = f"Bearer {token}"
         self.client = httpx.Client(
@@ -42,3 +43,26 @@ class GitHubClient:
             files=parse_unified_diff(diff_text),
             diff_text=diff_text,
         )
+
+
+def _resolve_github_token() -> str | None:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        return token
+
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError, OSError):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    token = result.stdout.strip()
+    return token or None

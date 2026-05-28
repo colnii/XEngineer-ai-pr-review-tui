@@ -1,5 +1,6 @@
 import httpx
 
+import xengineer_pr_review.github as github_module
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.models import PullRequestRef
 
@@ -20,6 +21,35 @@ def test_github_client_uses_gh_token_when_github_token_is_absent(monkeypatch) ->
     client = GitHubClient()
 
     assert client.client.headers["authorization"] == "Bearer gh-token"
+
+
+def test_github_client_falls_back_to_gh_auth_token(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+
+    def fake_run(*args, **kwargs):
+        assert args[0] == ["gh", "auth", "token"]
+        return type("Completed", (), {"returncode": 0, "stdout": "cli-token\n"})()
+
+    monkeypatch.setattr(github_module.subprocess, "run", fake_run)
+
+    client = GitHubClient()
+
+    assert client.client.headers["authorization"] == "Bearer cli-token"
+
+
+def test_github_client_ignores_failed_gh_auth_token(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+
+    def fake_run(*args, **kwargs):
+        return type("Completed", (), {"returncode": 1, "stdout": ""})()
+
+    monkeypatch.setattr(github_module.subprocess, "run", fake_run)
+
+    client = GitHubClient()
+
+    assert "authorization" not in client.client.headers
 
 
 def test_github_client_supports_socks_proxy_environment(monkeypatch) -> None:
