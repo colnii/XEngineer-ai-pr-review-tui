@@ -34,10 +34,18 @@ class ReviewTUI(App):
     RichLog { height: 1fr; border: solid $accent; padding: 1; }
     """
 
-    def __init__(self, pipeline: ReviewPipeline, language: str = "zh") -> None:
+    def __init__(
+        self,
+        pipeline: ReviewPipeline,
+        language: str = "zh",
+        initial_pr_url: str = "",
+        auto_analyze: bool = False,
+    ) -> None:
         super().__init__()
         self.pipeline = pipeline
         self.language = normalize_language(language)
+        self.initial_pr_url = initial_pr_url
+        self.auto_analyze = auto_analyze
         self.last_markdown: str | None = None
         self.last_report: ReviewReport | None = None
 
@@ -45,7 +53,11 @@ class ReviewTUI(App):
         yield Header()
         with Vertical(id="root"):
             with Horizontal(id="toolbar"):
-                yield Input(placeholder=label("input.pr_url", self.language), id="pr-url")
+                yield Input(
+                    value=self.initial_pr_url,
+                    placeholder=label("input.pr_url", self.language),
+                    id="pr-url",
+                )
                 yield Button(label("button.analyze", self.language), id="analyze", variant="primary")
                 yield Button(label("button.export", self.language), id="export")
                 yield Button(self._language_button_text(), id="language")
@@ -65,6 +77,10 @@ class ReviewTUI(App):
                             yield RichLog(id="raw", wrap=True, highlight=True, markup=True)
                 yield Static(self._meta_text(None), id="meta")
         yield Footer()
+
+    async def on_mount(self) -> None:
+        if self.auto_analyze and self.initial_pr_url:
+            await self._analyze()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "analyze":
