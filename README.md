@@ -1,6 +1,6 @@
 # XEngineer AI PR Review TUI
 
-A terminal UI for reviewing public GitHub Pull Requests with deterministic rules and AI assistance.
+A terminal UI for reviewing GitHub Pull Requests with deterministic rules and AI assistance. Public PRs can be reviewed anonymously; private repository PRs require a locally configured GitHub token with access to the repository.
 
 中文文档见 [README.zh-CN.md](README.zh-CN.md).
 
@@ -35,7 +35,7 @@ the `socksio` dependency is installed.
 
 ## Current Scope
 
-- Public GitHub PRs only.
+- Public GitHub PRs, plus private GitHub PRs when a configured token has access.
 - TUI entry point.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
@@ -60,14 +60,20 @@ export OPENAI_API_KEY="..."
 xpr-review
 ```
 
-If GitHub anonymous API requests are rate limited, provide a GitHub token:
+If GitHub anonymous API requests are rate limited, or you need to review a private
+repository PR, provide a GitHub token:
 
 ```bash
 export GITHUB_TOKEN="$(gh auth token)"
 xpr-review --mock-llm
 ```
 
-Paste a public PR URL such as:
+You can also use `GH_TOKEN`, or run `gh auth login` so the app can read the local
+login with `gh auth token`. Fine-grained tokens need at least `Pull requests: read`
+or `Contents: read` on the target repository. The TUI does not enter, display, or
+store tokens.
+
+Paste a PR URL such as:
 
 ```text
 https://github.com/Textualize/textual/pull/1
@@ -92,7 +98,8 @@ Large PRs are trimmed by file count and hunk size, and omitted files are listed 
 
 ## Limitations
 
-- Public GitHub PRs only.
+- Private repository PRs require a local token with read access; GitHub may return
+  404 when the token cannot access the repository.
 - No automatic PR comments.
 - No repository-wide semantic indexing.
 
@@ -101,6 +108,5 @@ Large PRs are trimmed by file count and hunk size, and omitted files are listed 
 - One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
   backed by a small Node wrapper around the packaged Python app.
 - GitHub Action integration.
-- Optional token support for private repositories.
 - Web UI using the same review core.
 - Configurable organization-specific review rules.

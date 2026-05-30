@@ -20,6 +20,8 @@ def test_normalize_language_defaults_to_chinese() -> None:
 def test_locale_labels_and_enum_display_names() -> None:
     assert label("report.title") == "AI PR 审查报告"
     assert label("report.title", "en") == "AI PR Review Report"
+    assert "私有" in label("input.pr_url")
+    assert "private" in label("input.pr_url", "en")
     assert display_severity("high") == "高"
     assert display_source("ai") == "AI"
     assert display_suggestion_type("edge-case") == "边界情况"

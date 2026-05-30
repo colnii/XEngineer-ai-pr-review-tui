@@ -24,13 +24,12 @@ class GitHubClient:
 
     def fetch_pr(self, ref: PullRequestRef) -> PullRequestData:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}"
-        diff_url = f"https://github.com/{ref.owner}/{ref.repo}/pull/{ref.number}.diff"
 
         pr_response = self.client.get(api_url)
         pr_response.raise_for_status()
         payload = pr_response.json()
 
-        diff_response = self.client.get(diff_url)
+        diff_response = self.client.get(api_url, headers={"Accept": "application/vnd.github.diff"})
         diff_response.raise_for_status()
         diff_text = diff_response.text
 

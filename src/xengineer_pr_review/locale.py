@@ -13,7 +13,10 @@ LABELS: dict[str, dict[Language, str]] = {
     "app.title": {"zh": "PR 审查助手", "en": "PR Review Assistant"},
     "button.analyze": {"zh": "分析", "en": "Analyze"},
     "button.export": {"zh": "导出", "en": "Export"},
-    "input.pr_url": {"zh": "粘贴公开 GitHub PR 地址", "en": "Paste public GitHub PR URL"},
+    "input.pr_url": {
+        "zh": "粘贴公开 PR，或已配置 token 的私有 PR 地址",
+        "en": "Paste public PR, or private PR with configured token",
+    },
     "status.ready": {"zh": "状态：就绪", "en": "Status: Ready"},
     "status.running": {"zh": "状态：运行中", "en": "Status: Running"},
     "status.complete": {"zh": "状态：完成", "en": "Status: Complete"},
