@@ -1,0 +1,62 @@
+from pathlib import Path
+
+import pytest
+
+from xengineer_pr_review.action_workflow import (
+    DEFAULT_ACTION_USES,
+    WORKFLOW_RELATIVE_PATH,
+    init_action_workflow,
+    render_action_workflow,
+)
+
+
+def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> None:
+    workflow = render_action_workflow(action_uses="owner/xengineer@v1", language="en")
+
+    assert "types: [opened, reopened, ready_for_review]" in workflow
+    assert "synchronize" not in workflow
+    assert "uses: owner/xengineer@v1" in workflow
+    assert "github-token: ${{ github.token }}" in workflow
+    assert "language: en" in workflow
+    assert "issues: write" not in workflow
+    assert "pull-requests: write" in workflow
+
+
+def test_default_action_reference_uses_stable_major_version() -> None:
+    assert DEFAULT_ACTION_USES == "colnii/XEngineer-ai-pr-review-tui@v1"
+
+
+def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) -> None:
+    written_path = init_action_workflow(
+        repo_path=tmp_path,
+        action_uses="owner/xengineer@v1",
+        language="zh",
+    )
+
+    assert written_path == tmp_path / WORKFLOW_RELATIVE_PATH
+    assert written_path.exists()
+    workflow = written_path.read_text(encoding="utf-8")
+    assert "uses: owner/xengineer@v1" in workflow
+    assert "language: zh" in workflow
+
+
+def test_init_action_workflow_refuses_to_overwrite_existing_file(tmp_path: Path) -> None:
+    workflow_path = tmp_path / WORKFLOW_RELATIVE_PATH
+    workflow_path.parent.mkdir(parents=True)
+    workflow_path.write_text("existing workflow\n", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        init_action_workflow(repo_path=tmp_path)
+
+    assert workflow_path.read_text(encoding="utf-8") == "existing workflow\n"
+
+
+def test_init_action_workflow_can_overwrite_existing_file(tmp_path: Path) -> None:
+    workflow_path = tmp_path / WORKFLOW_RELATIVE_PATH
+    workflow_path.parent.mkdir(parents=True)
+    workflow_path.write_text("existing workflow\n", encoding="utf-8")
+
+    written_path = init_action_workflow(repo_path=tmp_path, overwrite=True)
+
+    assert written_path == workflow_path
+    assert DEFAULT_ACTION_USES in workflow_path.read_text(encoding="utf-8")

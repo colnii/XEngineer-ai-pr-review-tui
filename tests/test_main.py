@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import xengineer_pr_review.__main__ as main_module
@@ -125,6 +127,25 @@ def test_main_publishes_comment_only_with_explicit_confirmation(monkeypatch, cap
     assert "Published PR comment:" in capsys.readouterr().out
 
 
+def test_main_publishes_comment_with_auto_publish_for_automation(monkeypatch, capsys) -> None:
+    pipeline = PublishingPipeline()
+    monkeypatch.setattr(main_module, "build_pipeline", lambda **kwargs: pipeline)
+
+    main_module.main(
+        [
+            "--pr-url",
+            PR_URL,
+            "--publish-comment",
+            "--auto-publish",
+            "--mock-llm",
+        ]
+    )
+
+    assert pipeline.runs == [PR_URL]
+    assert len(pipeline.posts) == 1
+    assert "Published PR comment:" in capsys.readouterr().out
+
+
 def test_main_writes_report_to_output_path(monkeypatch, tmp_path, capsys) -> None:
     pipeline = PublishingPipeline()
     output_path = tmp_path / "review-report.md"
@@ -221,6 +242,23 @@ def test_main_refuses_publish_without_confirmation(monkeypatch) -> None:
     assert pipeline_built is False
 
 
+def test_main_refuses_auto_publish_without_publish_comment(monkeypatch) -> None:
+    pipeline_built = False
+
+    def fake_build_pipeline(**kwargs):
+        nonlocal pipeline_built
+        pipeline_built = True
+        return PublishingPipeline()
+
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--pr-url", PR_URL, "--auto-publish"])
+
+    assert exc.value.code == 2
+    assert pipeline_built is False
+
+
 def test_publish_review_comment_refuses_failed_llm_report() -> None:
     pipeline = PublishingPipeline(llm_status="failed")
 
@@ -229,3 +267,59 @@ def test_publish_review_comment_refuses_failed_llm_report() -> None:
 
     assert pipeline.runs == [PR_URL]
     assert pipeline.posts == []
+
+
+def test_main_init_action_writes_workflow(tmp_path, capsys) -> None:
+    main_module.main(
+        [
+            "init-action",
+            "--repo-path",
+            str(tmp_path),
+            "--action-uses",
+            "owner/xengineer@v1",
+            "--language",
+            "en",
+        ]
+    )
+
+    workflow_path = tmp_path / ".github" / "workflows" / "xengineer-pr-review.yml"
+    assert workflow_path.exists()
+    assert "uses: owner/xengineer@v1" in workflow_path.read_text(encoding="utf-8")
+    assert f"Wrote GitHub Actions workflow: {workflow_path}" in capsys.readouterr().out
+
+
+def test_main_help_lists_init_action(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--help"])
+
+    assert exc.value.code == 0
+    assert "init-action" in capsys.readouterr().out
+
+
+def test_main_init_action_works_from_console_argv(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "xpr-review",
+            "init-action",
+            "--repo-path",
+            str(tmp_path),
+        ],
+    )
+
+    main_module.main()
+
+    assert (tmp_path / ".github" / "workflows" / "xengineer-pr-review.yml").exists()
+
+
+def test_main_init_action_refuses_existing_workflow(tmp_path) -> None:
+    workflow_path = tmp_path / ".github" / "workflows" / "xengineer-pr-review.yml"
+    workflow_path.parent.mkdir(parents=True)
+    workflow_path.write_text("existing workflow\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["init-action", "--repo-path", str(tmp_path)])
+
+    assert exc.value.code == 2
+    assert workflow_path.read_text(encoding="utf-8") == "existing workflow\n"

@@ -42,6 +42,8 @@ the `socksio` dependency is installed.
 - Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
 - Markdown export.
 - Manual PR conversation comment publishing after human confirmation.
+- GitHub Action integration that publishes one top-level PR conversation comment when a PR is
+  opened, reopened, or marked ready for review.
 
 ## Usage
 
@@ -126,6 +128,57 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 ```
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
+In non-interactive automation, `--auto-publish` can be used instead of
+`--confirm-publish` to make the intent explicit.
+
+### GitHub Actions Integration
+
+To run XEngineer automatically from another GitHub repository, add this workflow
+as `.github/workflows/xengineer-pr-review.yml` in that repository:
+
+```yaml
+name: XEngineer PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - name: Run XEngineer PR review
+        uses: colnii/XEngineer-ai-pr-review-tui@v1
+        with:
+          pr-url: ${{ github.event.pull_request.html_url }}
+          github-token: ${{ github.token }}
+          language: en
+          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          tavily-api-key: ${{ secrets.TAVILY_API_KEY }}
+```
+
+The default workflow publishes one new PR conversation comment after the PR is
+opened, reopened, or moved out of draft. It does not edit older bot comments and
+does not run on every pushed commit. Configure `DEEPSEEK_API_KEY` or
+`OPENAI_API_KEY` as a repository secret for real model output; without a model
+key, the CLI falls back to deterministic mock output.
+
+After installing the CLI, you can generate the same workflow instead of writing
+YAML by hand:
+
+```bash
+xpr-review init-action --repo-path /path/to/target/repo --language en
+```
+
+If you run the command inside the target repository, omit `--repo-path`. Use
+`--action-uses owner/repo@ref` to point at a fork, branch, or release tag, and
+`--overwrite` only when replacing an existing generated workflow.
 
 ### Live AI Review Acceptance Test
 
@@ -212,8 +265,8 @@ When a real model is configured, the LangGraph agent can request extra context w
 
 - Private repository PRs require a local token with read access; GitHub may return
   404 when the token cannot access the repository.
-- PR comments are manual only: the TUI requires explicit confirmation before
-  publishing a top-level conversation comment.
+- GitHub Action comments are top-level PR conversation comments only. The default generated
+  workflow publishes a new comment per trigger and does not edit an older XEngineer comment.
 - Inline review comments and approve/request-changes review states are not implemented.
 - No repository-wide semantic indexing.
 - Tool calls are bounded; if the model hits a tool limit or a tool fails, the report includes a warning.
@@ -222,7 +275,6 @@ When a real model is configured, the LangGraph agent can request extra context w
 
 - One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
   backed by a small Node wrapper around the packaged Python app.
-- GitHub Action integration.
 - Web UI using the same review core.
 - Pull request review mode with optional inline comments after GitHub inline-position mapping is implemented.
 - Configurable organization-specific review rules.
