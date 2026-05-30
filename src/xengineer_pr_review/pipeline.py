@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, TypeGuard
 
 from xengineer_pr_review.context import build_llm_context
 from xengineer_pr_review.diff_parser import parse_unified_diff
@@ -17,7 +17,14 @@ class GitHubLike(Protocol):
     def post_pr_comment(self, ref: PullRequestRef, body: str): ...
 
 
+class GitHubReadLike(GitHubLike, Protocol):
+    def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str: ...
+    def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]: ...
+
+
 class LLMLike(Protocol):
+    supports_review_tools: bool
+
     def analyze(self, prompt: str): ...
 
 
@@ -97,5 +104,5 @@ class ReviewPipeline:
         return self.llm.analyze(prompt, toolbox=toolbox)
 
 
-def _github_supports_read_tools(github: GitHubLike) -> bool:
+def _github_supports_read_tools(github: GitHubLike) -> TypeGuard[GitHubReadLike]:
     return hasattr(github, "fetch_file_text") and hasattr(github, "fetch_tree_paths")

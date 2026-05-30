@@ -32,10 +32,10 @@ def test_langgraph_review_client_loops_until_model_returns_final_json() -> None:
     }
 
 
-def test_langgraph_review_client_defaults_to_ten_tool_rounds() -> None:
+def test_langgraph_review_client_defaults_to_twenty_tool_rounds() -> None:
     client = LangGraphReviewClient(model="test-model", chat_completions=FakeChatCompletions([]))
 
-    assert client.max_tool_rounds == 10
+    assert client.max_tool_rounds == 20
 
 
 def test_langgraph_review_client_reports_tool_round_limit() -> None:
@@ -135,6 +135,29 @@ def test_langgraph_review_client_exposes_web_search_only_when_configured() -> No
     assert completions.calls[0]["tools"][0]["function"]["parameters"]["properties"]["max_lines"][
         "maximum"
     ] == 1000
+
+
+def test_web_search_tool_defaults_to_five_results() -> None:
+    completions = FakeChatCompletions(
+        [
+            _tool_call_message("call-1", "web_search", {"query": "security advisory"}),
+            _assistant_message(
+                '{"summary": "Searched web.", "risks": [], "suggestions": []}'
+            ),
+        ]
+    )
+    toolbox = FakeToolbox()
+    toolbox.web_searcher = object()
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        chat_completions=completions,
+    )
+
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Searched web."
+    assert toolbox.calls == [("web_search", "security advisory", 5)]
 
 
 class FakeToolbox:

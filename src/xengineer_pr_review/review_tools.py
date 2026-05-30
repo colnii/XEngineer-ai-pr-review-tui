@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 import os
 import re
 from dataclasses import dataclass, field
@@ -34,7 +35,11 @@ class ReviewToolbox:
     git_ref: str
     web_searcher: WebSearchLike | None = None
     _tree_paths_cache: list[str] | None = field(default=None, init=False, repr=False)
-    _file_text_cache: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    _file_text_cache: OrderedDict[str, str] = field(
+        default_factory=OrderedDict,
+        init=False,
+        repr=False,
+    )
 
     def read_file(self, path: str, max_lines: int = MAX_READ_LINES) -> str:
         try:
@@ -137,14 +142,16 @@ class ReviewToolbox:
         return self._tree_paths_cache
 
     def _fetch_file_text(self, path: str) -> str:
-        if path not in self._file_text_cache:
-            if len(self._file_text_cache) >= MAX_CACHED_FILES:
-                self._file_text_cache.pop(next(iter(self._file_text_cache)))
-            self._file_text_cache[path] = self.github.fetch_file_text(
-                self.ref,
-                path,
-                self.git_ref,
-            )
+        if path in self._file_text_cache:
+            self._file_text_cache.move_to_end(path)
+            return self._file_text_cache[path]
+        if len(self._file_text_cache) >= MAX_CACHED_FILES:
+            self._file_text_cache.popitem(last=False)
+        self._file_text_cache[path] = self.github.fetch_file_text(
+            self.ref,
+            path,
+            self.git_ref,
+        )
         return self._file_text_cache[path]
 
 

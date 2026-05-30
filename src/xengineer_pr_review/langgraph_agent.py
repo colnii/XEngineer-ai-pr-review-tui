@@ -11,6 +11,7 @@ from xengineer_pr_review.locale import normalize_language
 
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+DEFAULT_MAX_TOOL_ROUNDS = 20
 TOOL_ROUND_LIMIT_WARNING = "Tool round limit reached before the model returned a final report."
 
 
@@ -31,7 +32,7 @@ class LangGraphReviewClient:
         language: str = "zh",
         api_key: str | None = None,
         base_url: str | None = None,
-        max_tool_rounds: int = 10,
+        max_tool_rounds: int = DEFAULT_MAX_TOOL_ROUNDS,
         chat_completions: Any | None = None,
     ) -> None:
         self.model = model
@@ -222,7 +223,7 @@ def _dispatch_tool_call(toolbox: Any | None, call: dict[str, Any]) -> str:
     if name == "web_search":
         return toolbox.web_search(
             str(arguments.get("query", "")),
-            max_results=_int_argument(arguments, "max_results", 3),
+            max_results=_int_argument(arguments, "max_results", 5),
         )
     return f"tool error: unknown tool {name}"
 

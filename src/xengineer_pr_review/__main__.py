@@ -7,7 +7,11 @@ from collections.abc import Sequence
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
-from xengineer_pr_review.langgraph_agent import DEFAULT_OPENAI_MODEL, LangGraphReviewClient
+from xengineer_pr_review.langgraph_agent import (
+    DEFAULT_MAX_TOOL_ROUNDS,
+    DEFAULT_OPENAI_MODEL,
+    LangGraphReviewClient,
+)
 from xengineer_pr_review.llm import (
     DEFAULT_DEEPSEEK_BASE_URL,
     DEFAULT_DEEPSEEK_MODEL,
@@ -54,11 +58,11 @@ def build_pipeline(
 def _max_tool_rounds_from_env() -> int:
     raw_value = os.environ.get("XENGINEER_MAX_TOOL_ROUNDS")
     if raw_value is None:
-        return 10
+        return DEFAULT_MAX_TOOL_ROUNDS
     try:
         parsed = int(raw_value)
     except ValueError:
-        return 10
+        return DEFAULT_MAX_TOOL_ROUNDS
     return max(1, parsed)
 
 

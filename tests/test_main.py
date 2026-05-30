@@ -36,6 +36,7 @@ def test_build_pipeline_uses_langgraph_deepseek_when_deepseek_key_is_configured(
     assert isinstance(pipeline.llm, LangGraphReviewClient)
     assert pipeline.llm.language == "en"
     assert pipeline.llm.model == "deepseek-v4-pro"
+    assert pipeline.llm.max_tool_rounds == 20
 
 
 def test_build_pipeline_passes_max_tool_rounds_from_environment(monkeypatch) -> None:

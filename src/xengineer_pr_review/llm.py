@@ -68,6 +68,8 @@ def parse_llm_output(text: str) -> LLMResult:
 
 
 class MockLLMClient:
+    supports_review_tools = False
+
     def __init__(self, language: str = "zh") -> None:
         self.language = normalize_language(language)
 

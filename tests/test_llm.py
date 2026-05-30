@@ -20,6 +20,10 @@ def test_mock_llm_can_return_english_output() -> None:
     assert result.summary.startswith("Mock summary")
 
 
+def test_mock_llm_declares_tools_not_supported() -> None:
+    assert MockLLMClient.supports_review_tools is False
+
+
 def test_review_prompt_uses_selected_language_instruction() -> None:
     prompt = build_review_system_message("zh")
 
@@ -155,4 +159,3 @@ def test_parse_llm_unstructured_output_falls_back_to_raw_output() -> None:
     assert result.summary == "AI review returned unstructured notes."
     assert result.raw_output == "Looks okay overall, but I would inspect the tests manually."
     assert result.warnings == ["LLM output could not be parsed into structured sections."]
-

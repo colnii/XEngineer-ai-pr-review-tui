@@ -137,6 +137,24 @@ def test_read_file_keeps_bounded_file_cache() -> None:
     assert "src/file_0.py" not in toolbox._file_text_cache
 
 
+def test_read_file_cache_keeps_recently_used_entries() -> None:
+    files = {f"src/file_{index}.py": f"line {index}\n" for index in range(MAX_CACHED_FILES + 1)}
+    github = FakeGitHub(files=files, tree_paths=list(files))
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    for index in range(MAX_CACHED_FILES):
+        toolbox.read_file(f"src/file_{index}.py")
+    toolbox.read_file("src/file_0.py")
+    toolbox.read_file(f"src/file_{MAX_CACHED_FILES}.py")
+
+    assert "src/file_0.py" in toolbox._file_text_cache
+    assert "src/file_1.py" not in toolbox._file_text_cache
+
+
 def test_grep_code_path_glob_can_search_low_signal_files() -> None:
     github = FakeGitHub(
         files={
