@@ -48,6 +48,21 @@ the `socksio` dependency is installed.
 xpr-review --mock-llm
 ```
 
+For a non-interactive command-line review, pass a PR URL and an output target.
+Use `--output -` to print the Markdown report to stdout, or pass a file path
+to write the report:
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --mock-llm --output -
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --mock-llm --output review-report.md
+```
+
+The zero-configuration judge demo also supports the same headless path:
+
+```bash
+xpr-review --judge-demo --output -
+```
+
 The TUI defaults to Chinese. To start in English:
 
 ```bash

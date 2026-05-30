@@ -125,6 +125,85 @@ def test_main_publishes_comment_only_with_explicit_confirmation(monkeypatch, cap
     assert "Published PR comment:" in capsys.readouterr().out
 
 
+def test_main_writes_report_to_output_path(monkeypatch, tmp_path, capsys) -> None:
+    pipeline = PublishingPipeline()
+    output_path = tmp_path / "review-report.md"
+    monkeypatch.setattr(main_module, "build_pipeline", lambda **kwargs: pipeline)
+
+    main_module.main(
+        [
+            "--pr-url",
+            PR_URL,
+            "--mock-llm",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    markdown = output_path.read_text()
+    assert pipeline.runs == [PR_URL]
+    assert pipeline.posts == []
+    assert markdown.startswith("# AI PR 审查报告")
+    assert "Summary text" in markdown
+    assert f"Wrote review report: {output_path}" in capsys.readouterr().out
+
+
+def test_main_prints_report_when_output_is_dash(monkeypatch, capsys) -> None:
+    pipeline = PublishingPipeline()
+    monkeypatch.setattr(main_module, "build_pipeline", lambda **kwargs: pipeline)
+
+    main_module.main(
+        [
+            "--pr-url",
+            PR_URL,
+            "--mock-llm",
+            "--output",
+            "-",
+        ]
+    )
+
+    assert pipeline.runs == [PR_URL]
+    assert pipeline.posts == []
+    output = capsys.readouterr().out
+    assert output.startswith("# AI PR 审查报告")
+    assert "Summary text" in output
+    assert "Wrote review report:" not in output
+
+
+def test_main_can_output_judge_demo_report_without_pr_url(monkeypatch, capsys) -> None:
+    pipeline = PublishingPipeline()
+    build_kwargs = {}
+
+    def fake_build_pipeline(**kwargs):
+        build_kwargs.update(kwargs)
+        return pipeline
+
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    main_module.main(["--judge-demo", "--output", "-"])
+
+    assert build_kwargs["judge_demo"] is True
+    assert pipeline.runs == [main_module.JUDGE_DEMO_URL]
+    assert "# AI PR 审查报告" in capsys.readouterr().out
+
+
+def test_main_refuses_empty_output_path(monkeypatch) -> None:
+    pipeline_built = False
+
+    def fake_build_pipeline(**kwargs):
+        nonlocal pipeline_built
+        pipeline_built = True
+        return PublishingPipeline()
+
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--pr-url", PR_URL, "--output", ""])
+
+    assert exc.value.code == 2
+    assert pipeline_built is False
+
+
 def test_main_refuses_publish_without_confirmation(monkeypatch) -> None:
     pipeline_built = False
 

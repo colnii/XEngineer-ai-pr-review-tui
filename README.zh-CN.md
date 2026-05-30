@@ -48,6 +48,21 @@ xpr-review
 xpr-review --mock-llm
 ```
 
+如果希望完全在命令行里分析 PR，不打开 TUI，可以传入 PR URL 和输出目标。
+`--output -` 会把 Markdown 报告打印到 stdout（标准输出，终端文本流），传入文件路径
+则会写入报告文件：
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --mock-llm --output -
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --mock-llm --output review-report.md
+```
+
+评委零配置 demo 也支持同样的无界面命令行路径：
+
+```bash
+xpr-review --judge-demo --output -
+```
+
 使用真实模型输出：
 
 ```bash
