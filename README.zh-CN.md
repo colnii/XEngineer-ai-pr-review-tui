@@ -124,6 +124,25 @@ xpr-review --language en
 - Review Core：PR URL 解析、diff 解析、规则分析、上下文裁剪、报告聚合。
 - Adapters：GitHub HTTP 客户端、LangGraph LLM agent、Markdown 导出器。
 
+## 第三方依赖与原创功能说明
+
+顶层第三方依赖已在 [pyproject.toml](pyproject.toml) 中声明：
+
+- `textual`：终端 UI 框架。
+- `httpx[socks]`：用于 GitHub、模型兼容接口和 Tavily 的 HTTP 请求，并支持可选 SOCKS 代理。
+- `openai`：用于 OpenAI 和 DeepSeek Chat Completions 的 OpenAI-compatible 客户端。
+- `langgraph`：用于编排 model -> tool -> model 的 agent 审查循环。
+- `pydantic`：结构化模型的数据校验支持。
+- 开发依赖：`pytest` 用于测试，`ruff` 用于 lint。
+
+外部服务包括 GitHub REST API、可选 OpenAI/DeepSeek 模型 API、可选 Tavily web search。
+这些服务均通过本项目代码接入，不包含复制进仓库的第三方功能代码。
+
+本项目原创实现包括 PR URL 解析、unified diff 解析、确定性规则分析、上下文裁剪、报告聚合与导出、
+中英文 TUI 展示、人工确认后发布 PR 评论、LangGraph review client 集成、有边界的
+`read_file`/`grep_code`/`web_search` 工具行为、GitHub 文件/目录树 adapter、安全限制、fallback warning
+以及 fake client 测试体系。第三方库提供基础设施；PR Review 产品流程和工具策略由本仓库实现。
+
 ## 模型选择
 
 当存在 `DEEPSEEK_API_KEY` 时，应用优先使用 DeepSeek；否则在存在 `OPENAI_API_KEY`

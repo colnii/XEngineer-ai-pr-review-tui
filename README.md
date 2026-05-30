@@ -121,6 +121,26 @@ https://github.com/Textualize/textual/pull/1
 - Review Core: PR URL parsing, diff parsing, rule analysis, context trimming, report aggregation.
 - Adapters: GitHub HTTP client, LangGraph LLM agent, Markdown exporter.
 
+## Third-party Dependencies and Original Work
+
+Top-level third-party dependencies are declared in [pyproject.toml](pyproject.toml):
+
+- `textual`: terminal UI framework.
+- `httpx[socks]`: GitHub, model-provider-compatible, and Tavily HTTP requests, including optional SOCKS proxy support.
+- `openai`: OpenAI-compatible client used for OpenAI and DeepSeek Chat Completions.
+- `langgraph`: agent loop orchestration for model -> tool -> model review flow.
+- `pydantic`: typed data validation support for structured models.
+- Development-only tools: `pytest` for tests and `ruff` for linting.
+
+External services are GitHub REST APIs, optional OpenAI/DeepSeek model APIs, and optional Tavily web search.
+These services are integrated through this project code and are not embedded third-party code.
+
+Original project work includes PR URL parsing, unified diff parsing, deterministic rule analysis, context trimming,
+report aggregation/export, Chinese/English TUI presentation, manual PR comment publishing, the LangGraph review client
+integration, bounded `read_file`/`grep_code`/`web_search` tool behavior, GitHub file/tree adapters, safety limits,
+fallback warnings, and the fake-client test suite. Third-party libraries provide infrastructure; the PR review product
+workflow and tool policies are implemented in this repository.
+
 ## Model Choice
 
 The app uses DeepSeek when `DEEPSEEK_API_KEY` is present, otherwise it uses OpenAI when
