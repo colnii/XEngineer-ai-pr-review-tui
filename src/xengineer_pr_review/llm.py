@@ -137,11 +137,13 @@ class OpenAILLMClient:
         model: str = "gpt-4.1-mini",
         language: str = "zh",
         api_key: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         self._client = _langgraph_review_client()(
             model=model,
             language=language,
             api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+            base_url=base_url,
         )
 
     def analyze(self, prompt: str, toolbox=None) -> LLMResult:

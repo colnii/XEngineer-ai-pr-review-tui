@@ -67,6 +67,26 @@ def test_langgraph_review_client_reports_tool_round_limit() -> None:
     assert "Tool round limit reached" in completions.calls[1]["messages"][-1]["content"]
 
 
+def test_langgraph_review_client_reports_empty_final_after_tool_round_limit() -> None:
+    completions = FakeChatCompletions(
+        [
+            _tool_call_message("call-1", "grep_code", {"pattern": "SECRET"}),
+            _tool_call_message("call-2", "read_file", {"path": "src/app.py"}),
+        ]
+    )
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        max_tool_rounds=0,
+        chat_completions=completions,
+    )
+
+    result = client.analyze("PR title: demo", toolbox=FakeToolbox())
+
+    assert result.summary == "LLM did not return a final review."
+    assert result.warnings == ["Tool round limit reached before the model returned a final report."]
+
+
 def test_langgraph_review_client_tolerates_bad_integer_tool_args() -> None:
     completions = FakeChatCompletions(
         [

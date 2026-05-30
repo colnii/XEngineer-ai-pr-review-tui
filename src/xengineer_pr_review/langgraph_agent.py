@@ -53,7 +53,7 @@ class LangGraphReviewClient:
         }
         graph = self._build_graph(toolbox)
         final_state = graph.invoke(initial_state)
-        final_text = str(final_state["messages"][-1].get("content") or "")
+        final_text = _final_message_text(final_state)
         result = parse_llm_output(final_text.strip())
         return LLMResult(
             summary=result.summary,
@@ -156,6 +156,8 @@ class LangGraphReviewClient:
         }
 
     def _route_after_model(self, state: AgentState) -> str:
+        if state["force_final"]:
+            return "end"
         if not state["pending_tool_calls"]:
             return "end"
         if state["tool_rounds"] >= self.max_tool_rounds:
@@ -198,6 +200,25 @@ def _assistant_message_to_dict(message: Any) -> dict[str, Any]:
             for call in tool_calls
         ]
     return message_dict
+
+
+def _final_message_text(state: AgentState) -> str:
+    for message in reversed(state["messages"]):
+        if message.get("role") != "assistant":
+            continue
+        content = str(message.get("content") or "").strip()
+        if content:
+            return content
+    if TOOL_ROUND_LIMIT_WARNING in state["warnings"]:
+        return json.dumps(
+            {
+                "summary": "LLM did not return a final review.",
+                "risks": [],
+                "suggestions": [],
+                "notes": TOOL_ROUND_LIMIT_WARNING,
+            }
+        )
+    return str(state["messages"][-1].get("content") or "")
 
 
 def _dispatch_tool_call(toolbox: Any | None, call: dict[str, Any]) -> str:

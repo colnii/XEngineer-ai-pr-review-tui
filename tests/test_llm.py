@@ -53,12 +53,24 @@ def test_legacy_openai_client_wraps_langgraph_client(monkeypatch) -> None:
     monkeypatch.setattr(llm_module, "_langgraph_review_client", lambda: FakeLangGraphReviewClient)
 
     toolbox = object()
-    client = OpenAILLMClient(model="gpt-test", language="en")
+    client = OpenAILLMClient(
+        model="gpt-test",
+        language="en",
+        base_url="https://openai-compatible.example",
+    )
     result = client.analyze("PR title: demo", toolbox=toolbox)
 
     assert result.summary == "Wrapped OpenAI."
     assert calls == [
-        ("init", {"model": "gpt-test", "language": "en", "api_key": None}),
+        (
+            "init",
+            {
+                "model": "gpt-test",
+                "language": "en",
+                "api_key": None,
+                "base_url": "https://openai-compatible.example",
+            },
+        ),
         ("analyze", ("PR title: demo", toolbox)),
     ]
 
