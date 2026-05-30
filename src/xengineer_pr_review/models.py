@@ -38,6 +38,11 @@ class PullRequestData:
     diff_text: str
 
 
+@dataclass(frozen=True)
+class PostedComment:
+    html_url: str
+
+
 class ReviewFinding(BaseModel):
     severity: Severity
     source: FindingSource = "rule"

@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 import xengineer_pr_review.github as github_module
@@ -136,6 +138,37 @@ def test_fetch_pr_allows_public_pr_without_token(monkeypatch) -> None:
 
     assert pr.title == "Demo PR"
     assert authorizations == [None, None]
+
+
+def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[tuple[str, str | None, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(
+            (
+                str(request.url),
+                request.headers.get("authorization"),
+                json.loads(request.content.decode()),
+            )
+        )
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#issuecomment-9"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_comment(PullRequestRef("owner", "repo", 1), "# Report")
+
+    assert result.html_url == "https://github.com/owner/repo/pull/1#issuecomment-9"
+    assert requests == [
+        (
+            "https://api.github.com/repos/owner/repo/issues/1/comments",
+            "Bearer write-token",
+            {"body": "# Report"},
+        )
+    ]
 
 
 def _pull_api_response(request: httpx.Request) -> httpx.Response:

@@ -6,7 +6,7 @@ import subprocess
 import httpx
 
 from xengineer_pr_review.diff_parser import parse_unified_diff
-from xengineer_pr_review.models import PullRequestData, PullRequestRef
+from xengineer_pr_review.models import PostedComment, PullRequestData, PullRequestRef
 
 
 class GitHubClient:
@@ -42,6 +42,13 @@ class GitHubClient:
             files=parse_unified_diff(diff_text),
             diff_text=diff_text,
         )
+
+    def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/issues/{ref.number}/comments"
+        response = self.client.post(api_url, json={"body": body})
+        response.raise_for_status()
+        payload = response.json()
+        return PostedComment(html_url=payload.get("html_url", ""))
 
 
 def _resolve_github_token() -> str | None:

@@ -1,5 +1,11 @@
 from xengineer_pr_review.llm import LLMResult, MockLLMClient
-from xengineer_pr_review.models import PullRequestData, PullRequestRef, ReviewFinding, ReviewSuggestion
+from xengineer_pr_review.models import (
+    PostedComment,
+    PullRequestData,
+    PullRequestRef,
+    ReviewFinding,
+    ReviewSuggestion,
+)
 from xengineer_pr_review.pipeline import ReviewPipeline
 
 
@@ -77,3 +83,22 @@ def test_pipeline_merges_ai_risks_with_rule_findings_and_sets_metadata() -> None
     assert any(finding.source == "ai" for finding in report.findings)
     assert report.suggestions[0].title == "AI suggestion"
     assert report.llm_status == "ok"
+
+
+class PostingGitHubClient(FakeGitHubClient):
+    def __init__(self) -> None:
+        self.posts: list[tuple[PullRequestRef, str]] = []
+
+    def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
+        self.posts.append((ref, body))
+        return PostedComment(html_url="https://github.com/owner/repo/pull/1#issuecomment-9")
+
+
+def test_pipeline_posts_review_comment_from_pr_url() -> None:
+    github = PostingGitHubClient()
+    pipeline = ReviewPipeline(github=github, llm=MockLLMClient())
+
+    result = pipeline.post_review_comment("https://github.com/owner/repo/pull/1", "# Report")
+
+    assert result.html_url.endswith("#issuecomment-9")
+    assert github.posts == [(PullRequestRef("owner", "repo", 1), "# Report")]

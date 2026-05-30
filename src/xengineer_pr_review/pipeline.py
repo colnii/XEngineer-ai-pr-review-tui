@@ -13,6 +13,7 @@ from xengineer_pr_review.rules import analyze_rules
 
 class GitHubLike(Protocol):
     def fetch_pr(self, ref: PullRequestRef) -> PullRequestData: ...
+    def post_pr_comment(self, ref: PullRequestRef, body: str): ...
 
 
 class LLMLike(Protocol):
@@ -75,3 +76,7 @@ class ReviewPipeline:
             ai_notes=ai_notes,
             raw_ai_output=raw_ai_output,
         )
+
+    def post_review_comment(self, pr_url: str, body: str):
+        ref = parse_pr_url(pr_url)
+        return self.github.post_pr_comment(ref, body)

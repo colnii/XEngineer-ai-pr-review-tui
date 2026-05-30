@@ -6,6 +6,19 @@ from xengineer_pr_review.pipeline import ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
 
 
+class PostingPipeline:
+    def __init__(self) -> None:
+        self.posts: list[tuple[str, str]] = []
+
+    def post_review_comment(self, pr_url: str, body: str):
+        self.posts.append((pr_url, body))
+        return type(
+            "Posted",
+            (),
+            {"html_url": "https://github.com/owner/repo/pull/1#issuecomment-9"},
+        )()
+
+
 def test_tui_defaults_to_chinese_language() -> None:
     app = ReviewTUI(ReviewPipeline(llm=MockLLMClient()))
 
@@ -87,3 +100,69 @@ def test_tui_can_switch_language_and_rerender_current_report(monkeypatch) -> Non
     assert app.last_markdown is not None
     assert app.last_markdown.startswith("# AI PR Review Report")
     assert rendered == [("en", report)]
+
+
+def test_tui_publish_requires_analyzed_report(monkeypatch) -> None:
+    app = ReviewTUI(PostingPipeline())
+    statuses: list[str] = []
+    monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
+
+    app._request_publish_confirmation()
+
+    assert statuses == ["请先分析 PR 再发布评论"]
+
+
+def test_tui_publish_first_click_arms_confirmation(monkeypatch) -> None:
+    app = ReviewTUI(PostingPipeline())
+    app.last_report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+    )
+    app.last_markdown = "# Report"
+    statuses: list[str] = []
+    monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
+
+    app._request_publish_confirmation()
+
+    assert app.publish_confirmation_pending is True
+    assert "再次点击" in statuses[-1]
+
+
+def test_tui_confirm_publish_posts_markdown(monkeypatch) -> None:
+    pipeline = PostingPipeline()
+    app = ReviewTUI(pipeline)
+    app.last_report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+    )
+    app.last_markdown = "# Report"
+    app.publish_confirmation_pending = True
+    statuses: list[str] = []
+    monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
+
+    app._confirm_publish()
+
+    assert pipeline.posts == [("https://github.com/owner/repo/pull/1", "# Report")]
+    assert app.publish_confirmation_pending is False
+    assert "已发布评论" in statuses[-1]
+
+
+def test_tui_confirm_publish_does_not_post_without_pending_confirmation(monkeypatch) -> None:
+    pipeline = PostingPipeline()
+    app = ReviewTUI(pipeline)
+    app.last_report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+    )
+    app.last_markdown = "# Report"
+    statuses: list[str] = []
+    monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
+
+    app._confirm_publish()
+
+    assert pipeline.posts == []
+    assert app.publish_confirmation_pending is True
+    assert "再次点击" in statuses[-1]
