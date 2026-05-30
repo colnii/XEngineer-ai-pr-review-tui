@@ -127,6 +127,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.output is not None and args.publish_comment:
         parser.error("--output cannot be used with --publish-comment")
+    if args.output == "":
+        parser.error("--output must not be empty")
 
     if args.publish_comment:
         if not args.pr_url:

@@ -187,6 +187,23 @@ def test_main_can_output_judge_demo_report_without_pr_url(monkeypatch, capsys) -
     assert "# AI PR 审查报告" in capsys.readouterr().out
 
 
+def test_main_refuses_empty_output_path(monkeypatch) -> None:
+    pipeline_built = False
+
+    def fake_build_pipeline(**kwargs):
+        nonlocal pipeline_built
+        pipeline_built = True
+        return PublishingPipeline()
+
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--pr-url", PR_URL, "--output", ""])
+
+    assert exc.value.code == 2
+    assert pipeline_built is False
+
+
 def test_main_refuses_publish_without_confirmation(monkeypatch) -> None:
     pipeline_built = False
 
