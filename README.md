@@ -79,6 +79,15 @@ a token and use the TUI `Publish Comment` button after analysis. The first click
 asks for confirmation; the second click posts the comment. Fine-grained tokens need
 `Issues: write` or `Pull requests: write` on the target repository.
 
+The same write path is available from the command line, but it requires an
+explicit confirmation flag because there is no TUI preview step:
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
+```
+
+For deterministic local testing, add `--mock-llm` to publish the mock report body.
+
 Paste a PR URL such as:
 
 ```text

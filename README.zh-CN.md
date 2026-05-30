@@ -70,6 +70,14 @@ TUI 不会输入、显示或保存 token。
 完成后点击 TUI 的 `发布评论` 按钮。第一次点击只进入确认状态，第二次点击才会真正发布。
 细粒度 token 需要目标仓库的 `Issues: write` 或 `Pull requests: write` 权限。
 
+同一个写入路径也可以从命令行触发；因为命令行没有 TUI 预览步骤，所以必须显式传入确认参数：
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
+```
+
+如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
+
 启动后粘贴 PR 地址，例如：
 
 ```text
