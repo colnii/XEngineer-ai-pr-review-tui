@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, ScreenStackError
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.widgets import Button, Footer, Header, Input, RichLog, Static, TabPane, TabbedContent
 
 from xengineer_pr_review.export import render_markdown
@@ -48,6 +49,7 @@ class ReviewTUI(App):
         self.auto_analyze = auto_analyze
         self.last_markdown: str | None = None
         self.last_report: ReviewReport | None = None
+        self.publish_confirmation_pending = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -60,6 +62,7 @@ class ReviewTUI(App):
                 )
                 yield Button(label("button.analyze", self.language), id="analyze", variant="primary")
                 yield Button(label("button.export", self.language), id="export")
+                yield Button(label("button.publish", self.language), id="publish")
                 yield Button(self._language_button_text(), id="language")
             with Horizontal(id="main"):
                 with Vertical(id="workspace"):
@@ -87,12 +90,18 @@ class ReviewTUI(App):
             await self._analyze()
         elif event.button.id == "export":
             self._export()
+        elif event.button.id == "publish":
+            if self.publish_confirmation_pending:
+                self._confirm_publish()
+            else:
+                self._request_publish_confirmation()
         elif event.button.id == "language":
             self._set_language("en" if self.language == "zh" else "zh")
 
     async def _analyze(self) -> None:
         url = self.query_one("#pr-url", Input).value
         status = self.query_one("#status", Static)
+        self._reset_publish_confirmation()
         self._clear_report_logs()
         status.update(self._phase_text("Running"))
         self.query_one("#meta", Static).update(self._meta_text(None))
@@ -121,11 +130,54 @@ class ReviewTUI(App):
         output_path.write_text(self.last_markdown)
         status.update(f"{label('status.exported', self.language)} {output_path}")
 
+    def _update_status(self, text: str) -> None:
+        self.query_one("#status", Static).update(text)
+
+    def _set_publish_button_label(self, text: str) -> None:
+        try:
+            self.query_one("#publish", Button).label = text
+        except (NoMatches, ScreenStackError):
+            return
+
+    def _reset_publish_confirmation(self) -> None:
+        self.publish_confirmation_pending = False
+        self._set_publish_button_label(label("button.publish", self.language))
+
+    def _request_publish_confirmation(self) -> None:
+        if not self.last_report or not self.last_markdown:
+            self._update_status(label("status.publish_first", self.language))
+            return
+        self.publish_confirmation_pending = True
+        self._set_publish_button_label(label("button.confirm_publish", self.language))
+        self._update_status(label("status.publish_confirm", self.language))
+
+    def _confirm_publish(self) -> None:
+        if not self.publish_confirmation_pending:
+            self._request_publish_confirmation()
+            return
+        if not self.last_report or not self.last_markdown:
+            self._reset_publish_confirmation()
+            self._update_status(label("status.publish_first", self.language))
+            return
+        self._update_status(label("status.publishing", self.language))
+        try:
+            posted = self.pipeline.post_review_comment(
+                self.last_report.pr_url,
+                self.last_markdown,
+            )
+        except Exception as exc:
+            self._reset_publish_confirmation()
+            self._update_status(f"{label('status.publish_failed', self.language)}: {exc}")
+            return
+        self._reset_publish_confirmation()
+        self._update_status(f"{label('status.published', self.language)}: {posted.html_url}")
+
     def _language_button_text(self) -> str:
         return "English" if self.language == "zh" else "中文"
 
     def _set_language(self, language: str) -> None:
         self.language = normalize_language(language)
+        self._reset_publish_confirmation()
         self._update_static_language()
         if self.last_report is not None:
             self.last_markdown = render_markdown(self.last_report, language=self.language)
@@ -136,6 +188,7 @@ class ReviewTUI(App):
         self.query_one("#pr-url", Input).placeholder = label("input.pr_url", self.language)
         self.query_one("#analyze", Button).label = label("button.analyze", self.language)
         self.query_one("#export", Button).label = label("button.export", self.language)
+        self.query_one("#publish", Button).label = label("button.publish", self.language)
         self.query_one("#language", Button).label = self._language_button_text()
         self.query_one("#status", Static).update(
             self._phase_text("Complete" if self.last_report else "Ready")

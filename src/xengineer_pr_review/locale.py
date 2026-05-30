@@ -13,6 +13,8 @@ LABELS: dict[str, dict[Language, str]] = {
     "app.title": {"zh": "PR 审查助手", "en": "PR Review Assistant"},
     "button.analyze": {"zh": "分析", "en": "Analyze"},
     "button.export": {"zh": "导出", "en": "Export"},
+    "button.publish": {"zh": "发布评论", "en": "Publish Comment"},
+    "button.confirm_publish": {"zh": "确认发布", "en": "Confirm Publish"},
     "input.pr_url": {
         "zh": "粘贴公开 PR，或已配置 token 的私有 PR 地址",
         "en": "Paste public PR, or private PR with configured token",
@@ -23,6 +25,23 @@ LABELS: dict[str, dict[Language, str]] = {
     "status.error": {"zh": "错误", "en": "Error"},
     "status.export_first": {"zh": "请先分析 PR 再导出", "en": "Analyze a PR before exporting"},
     "status.exported": {"zh": "已导出", "en": "Exported"},
+    "status.publish_first": {
+        "zh": "请先分析 PR 再发布评论",
+        "en": "Analyze a PR before publishing a comment",
+    },
+    "status.publish_confirm": {
+        "zh": (
+            "即将把当前报告发布到 PR Conversation。需要 GitHub Issues: write "
+            "或 Pull requests: write 权限；再次点击确认发布。"
+        ),
+        "en": (
+            "This will publish the current report to the PR conversation. Requires "
+            "GitHub Issues: write or Pull requests: write; click again to confirm."
+        ),
+    },
+    "status.publishing": {"zh": "正在发布 PR 评论...", "en": "Publishing PR comment..."},
+    "status.published": {"zh": "已发布评论", "en": "Published comment"},
+    "status.publish_failed": {"zh": "发布评论失败", "en": "Failed to publish comment"},
     "phase.fetch": {"zh": "获取 PR", "en": "Fetch PR"},
     "phase.parse": {"zh": "解析 Diff", "en": "Parse Diff"},
     "phase.rules": {"zh": "规则扫描", "en": "Rule Scan"},

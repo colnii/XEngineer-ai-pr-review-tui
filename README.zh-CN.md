@@ -37,6 +37,7 @@ xpr-review
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
 - 支持 Markdown 报告导出。
+- 支持人工确认后发布 PR 顶层 Conversation 评论。
 - 默认中文界面，可切换英文。
 
 ## 使用方式
@@ -64,6 +65,18 @@ xpr-review --mock-llm
 也可以使用 `GH_TOKEN`，或先运行 `gh auth login`，让应用通过 `gh auth token` 读取本机登录态。
 细粒度 token 至少需要目标仓库的 `Pull requests: read` 或 `Contents: read` 权限。
 TUI 不会输入、显示或保存 token。
+
+如需把生成的报告发布为 PR 顶层 Conversation 评论，请先配置 GitHub token，然后在分析
+完成后点击 TUI 的 `发布评论` 按钮。第一次点击只进入确认状态，第二次点击才会真正发布。
+细粒度 token 需要目标仓库的 `Issues: write` 或 `Pull requests: write` 权限。
+
+同一个写入路径也可以从命令行触发；因为命令行没有 TUI 预览步骤，所以必须显式传入确认参数：
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
+```
+
+如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
 
 启动后粘贴 PR 地址，例如：
 
@@ -102,7 +115,8 @@ xpr-review --language en
 ## 限制
 
 - 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。
-- 不会自动在 PR 下发表评论。
+- PR 评论只支持手动发布：TUI 会要求人工确认后，才发布顶层 Conversation 评论。
+- 暂不支持行内 review comment，也不支持 approve/request-changes review 状态。
 - 没有仓库级语义索引。
 
 ## 后续方向
@@ -111,4 +125,5 @@ xpr-review --language en
   `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - GitHub Action 集成。
 - 基于相同 Review Core 的 Web UI。
+- 支持 PR review 模式，在完成 diff 行号映射后发布可选行内评论。
 - 可配置的组织级审查规则。

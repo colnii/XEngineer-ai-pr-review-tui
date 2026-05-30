@@ -40,6 +40,7 @@ the `socksio` dependency is installed.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
 - Markdown export.
+- Manual PR conversation comment publishing after human confirmation.
 
 ## Usage
 
@@ -73,6 +74,20 @@ login with `gh auth token`. Fine-grained tokens need at least `Pull requests: re
 or `Contents: read` on the target repository. The TUI does not enter, display, or
 store tokens.
 
+To publish the generated report as a top-level PR conversation comment, configure
+a token and use the TUI `Publish Comment` button after analysis. The first click
+asks for confirmation; the second click posts the comment. Fine-grained tokens need
+`Issues: write` or `Pull requests: write` on the target repository.
+
+The same write path is available from the command line, but it requires an
+explicit confirmation flag because there is no TUI preview step:
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
+```
+
+For deterministic local testing, add `--mock-llm` to publish the mock report body.
+
 Paste a PR URL such as:
 
 ```text
@@ -100,7 +115,9 @@ Large PRs are trimmed by file count and hunk size, and omitted files are listed 
 
 - Private repository PRs require a local token with read access; GitHub may return
   404 when the token cannot access the repository.
-- No automatic PR comments.
+- PR comments are manual only: the TUI requires explicit confirmation before
+  publishing a top-level conversation comment.
+- Inline review comments and approve/request-changes review states are not implemented.
 - No repository-wide semantic indexing.
 
 ## Future Work
@@ -109,4 +126,5 @@ Large PRs are trimmed by file count and hunk size, and omitted files are listed 
   backed by a small Node wrapper around the packaged Python app.
 - GitHub Action integration.
 - Web UI using the same review core.
+- Pull request review mode with optional inline comments after diff-line mapping is implemented.
 - Configurable organization-specific review rules.
