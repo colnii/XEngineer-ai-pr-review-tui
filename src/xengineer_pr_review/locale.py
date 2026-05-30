@@ -108,12 +108,12 @@ LABELS: dict[str, dict[Language, str]] = {
         "en": "No AI suggestions were generated.",
     },
     "report.omitted_files": {
-        "zh": "由于上下文限制，LLM prompt 省略了这些文件：",
-        "en": "The LLM prompt omitted these files because of context limits:",
+        "zh": "LLM prompt 省略了这些低信号、生成物或二进制文件：",
+        "en": "The LLM prompt skipped these low-signal, generated, or binary files:",
     },
     "report.all_files_included": {
-        "zh": "所有变更文件都已包含在 LLM 上下文中。",
-        "en": "All changed files were included in the LLM context.",
+        "zh": "所有适合审查的变更文件都已包含在 LLM 上下文中。",
+        "en": "All review-relevant changed files were included in the LLM context.",
     },
     "mode.rules_llm": {"zh": "规则 + LLM", "en": "Rules + LLM"},
     "mode.rules_only": {"zh": "仅规则", "en": "Rules only"},

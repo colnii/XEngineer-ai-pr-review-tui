@@ -121,8 +121,10 @@ The app also supports `--mock-llm` for deterministic local review output. For ju
 
 ## Context Strategy
 
-The app sends PR metadata, deterministic rule findings, and trimmed diff snippets to the model.
-Large PRs are trimmed by file count and hunk size, and omitted files are listed in the final report.
+The app sends PR metadata, deterministic rule findings, and diff snippets to the model.
+Review-relevant files are no longer trimmed by count. The prompt skips obvious low-signal files
+such as lockfiles, generated bundles, binary assets, and archives; long hunks are still trimmed.
+Skipped files are listed in the final report.
 
 ## Limitations
 
