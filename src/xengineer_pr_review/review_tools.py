@@ -166,6 +166,8 @@ class TavilyWebSearchClient:
         self.client = client or httpx.Client(timeout=timeout, follow_redirects=True)
 
     def search(self, query: str, max_results: int) -> list[dict[str, str]]:
+        if not self.api_key:
+            raise ValueError("TAVILY_API_KEY is not configured.")
         response = self.client.post(
             "https://api.tavily.com/search",
             headers={"Authorization": f"Bearer {self.api_key}"},

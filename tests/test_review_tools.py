@@ -1,5 +1,7 @@
+import pytest
+
 from xengineer_pr_review.models import PullRequestRef
-from xengineer_pr_review.review_tools import MAX_CACHED_FILES, ReviewToolbox
+from xengineer_pr_review.review_tools import MAX_CACHED_FILES, ReviewToolbox, TavilyWebSearchClient
 
 
 def test_read_file_returns_bounded_numbered_content() -> None:
@@ -249,6 +251,17 @@ def test_web_search_redacts_provider_errors() -> None:
     assert "secret-token" not in result
 
 
+def test_tavily_search_rejects_empty_api_key_before_network_call(monkeypatch) -> None:
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    http_client = RecordingHttpClient()
+    web_search = TavilyWebSearchClient(api_key="", client=http_client)
+
+    with pytest.raises(ValueError, match="TAVILY_API_KEY is not configured"):
+        web_search.search("python security advisory", max_results=1)
+
+    assert http_client.calls == []
+
+
 class FakeGitHub:
     def __init__(self, files: dict[str, str], tree_paths: list[str]) -> None:
         self.files = files
@@ -282,3 +295,12 @@ class FakeWebSearch:
 class FailingWebSearch:
     def search(self, query: str, max_results: int) -> list[dict[str, str]]:
         raise RuntimeError("provider rejected secret-token")
+
+
+class RecordingHttpClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    def post(self, *args: object, **kwargs: object):
+        self.calls.append((args, kwargs))
+        raise AssertionError("network should not be called without an API key")

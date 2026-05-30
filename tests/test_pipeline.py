@@ -39,6 +39,14 @@ class FakeGitHubClient:
         return ["src/auth.py"]
 
 
+class FetchOnlyGitHubClient:
+    def fetch_pr(self, ref: PullRequestRef) -> PullRequestData:
+        return FakeGitHubClient().fetch_pr(ref)
+
+    def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
+        return PostedComment(html_url="https://github.com/owner/repo/pull/1#issuecomment-9")
+
+
 def test_pipeline_returns_report_with_rules_and_llm_summary() -> None:
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=MockLLMClient())
 
@@ -106,6 +114,17 @@ class ToolAwareLLMClient:
         return LLMResult(summary="AI summary with tools")
 
 
+class OptionalToolAwareLLMClient:
+    supports_review_tools = True
+
+    def __init__(self) -> None:
+        self.toolbox = object()
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        self.toolbox = toolbox
+        return LLMResult(summary="AI summary without tools")
+
+
 def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
     llm = ToolAwareLLMClient()
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=llm)
@@ -115,6 +134,18 @@ def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
     assert report.summary == "AI summary with tools"
     assert "File: src/auth.py" in llm.tool_output
     assert "1: token = 'x'" in llm.tool_output
+
+
+def test_pipeline_logs_when_tool_aware_llm_cannot_receive_tools(caplog) -> None:
+    caplog.set_level("INFO")
+    llm = OptionalToolAwareLLMClient()
+    pipeline = ReviewPipeline(github=FetchOnlyGitHubClient(), llm=llm)
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    assert report.summary == "AI summary without tools"
+    assert llm.toolbox is None
+    assert "Review tools disabled" in caplog.text
 
 
 class PostingGitHubClient(FakeGitHubClient):

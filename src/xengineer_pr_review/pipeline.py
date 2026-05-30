@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Protocol, TypeGuard
 
 from xengineer_pr_review.context import build_llm_context
@@ -10,6 +11,9 @@ from xengineer_pr_review.models import PullRequestData, PullRequestRef, ReviewRe
 from xengineer_pr_review.pr_url import parse_pr_url
 from xengineer_pr_review.review_tools import ReviewToolbox, default_web_searcher
 from xengineer_pr_review.rules import analyze_rules
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class GitHubLike(Protocol):
@@ -94,6 +98,7 @@ class ReviewPipeline:
         if not getattr(self.llm, "supports_review_tools", False):
             return self.llm.analyze(prompt)
         if not _github_supports_read_tools(self.github):
+            LOGGER.info("Review tools disabled: GitHub client does not support file read/search tools.")
             return self.llm.analyze(prompt, toolbox=None)
         toolbox = ReviewToolbox(
             github=self.github,
