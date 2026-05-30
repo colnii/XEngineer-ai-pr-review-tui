@@ -32,7 +32,7 @@ class LangGraphReviewClient:
         language: str = "zh",
         api_key: str | None = None,
         base_url: str | None = None,
-        max_tool_rounds: int = 4,
+        max_tool_rounds: int = 10,
         chat_completions: Any | None = None,
     ) -> None:
         self.model = model
@@ -111,7 +111,7 @@ class LangGraphReviewClient:
         warnings = list(state["warnings"])
         for call in state["pending_tool_calls"]:
             result = _dispatch_tool_call(toolbox, call)
-            if " error" in result or " unavailable" in result:
+            if _is_tool_warning(result):
                 warnings.append(result.splitlines()[0])
             tool_messages.append(
                 {
@@ -129,10 +129,19 @@ class LangGraphReviewClient:
         }
 
     def _force_final(self, state: AgentState) -> AgentState:
+        skipped_tool_messages = [
+            {
+                "role": "tool",
+                "tool_call_id": str(call.get("id", "")),
+                "content": f"tool skipped: {TOOL_ROUND_LIMIT_WARNING}",
+            }
+            for call in state["pending_tool_calls"]
+        ]
         return {
             **state,
             "messages": [
                 *state["messages"],
+                *skipped_tool_messages,
                 {
                     "role": "system",
                     "content": (
@@ -217,6 +226,19 @@ def _dispatch_tool_call(toolbox: Any | None, call: dict[str, Any]) -> str:
             max_results=_int_argument(arguments, "max_results", 3),
         )
     return f"tool error: unknown tool {name}"
+
+
+def _is_tool_warning(result: str) -> bool:
+    first_line = result.splitlines()[0] if result else ""
+    return first_line.startswith(
+        (
+            "read_file error",
+            "grep_code error",
+            "web_search error",
+            "web_search unavailable",
+            "tool error",
+        )
+    )
 
 
 def _int_argument(arguments: dict[str, Any], name: str, default: int) -> int:

@@ -32,6 +32,12 @@ def test_langgraph_review_client_loops_until_model_returns_final_json() -> None:
     }
 
 
+def test_langgraph_review_client_defaults_to_ten_tool_rounds() -> None:
+    client = LangGraphReviewClient(model="test-model", chat_completions=FakeChatCompletions([]))
+
+    assert client.max_tool_rounds == 10
+
+
 def test_langgraph_review_client_reports_tool_round_limit() -> None:
     completions = FakeChatCompletions(
         [
@@ -53,6 +59,11 @@ def test_langgraph_review_client_reports_tool_round_limit() -> None:
     assert result.summary == "Limited review."
     assert result.warnings == ["Tool round limit reached before the model returned a final report."]
     assert completions.calls[1]["tools"] == []
+    assert completions.calls[1]["messages"][-2] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": "tool skipped: Tool round limit reached before the model returned a final report.",
+    }
     assert "Tool round limit reached" in completions.calls[1]["messages"][-1]["content"]
 
 
@@ -76,6 +87,29 @@ def test_langgraph_review_client_tolerates_bad_integer_tool_args() -> None:
 
     assert result.summary == "Recovered from bad args."
     assert toolbox.calls == [("read_file", "src/app.py", 200)]
+
+
+def test_langgraph_review_client_does_not_warn_on_file_content_with_error_word() -> None:
+    completions = FakeChatCompletions(
+        [
+            _tool_call_message("call-1", "read_file", {"path": "src/app.py"}),
+            _assistant_message(
+                '{"summary": "Read file content.", "risks": [], "suggestions": []}'
+            ),
+        ]
+    )
+    toolbox = FakeToolbox()
+    toolbox.read_file_result = "File: src/app.py\n1: raise error"
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        chat_completions=completions,
+    )
+
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Read file content."
+    assert result.warnings == []
 
 
 def test_langgraph_review_client_exposes_web_search_only_when_configured() -> None:
@@ -103,10 +137,11 @@ def test_langgraph_review_client_exposes_web_search_only_when_configured() -> No
 class FakeToolbox:
     def __init__(self) -> None:
         self.calls: list[tuple[object, ...]] = []
+        self.read_file_result = "File: src/app.py\n1: print('hello')"
 
     def read_file(self, path: str, max_lines: int = 200) -> str:
         self.calls.append(("read_file", path, max_lines))
-        return "File: src/app.py\n1: print('hello')"
+        return self.read_file_result
 
     def grep_code(
         self,
