@@ -36,6 +36,7 @@ xpr-review
 - TUI 作为主要入口。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
+- 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
 - 支持 Markdown 报告导出。
 - 支持人工确认后发布 PR 顶层 Conversation 评论。
 - 默认中文界面，可切换英文。
@@ -83,6 +84,8 @@ xpr-review
 阶段，模型可以主动调用只读工具，读取 PR head commit 上的文件，或 grep（按文本/正则搜索）
 仓库代码；当模型不再请求工具并返回最终结构化报告时，审查正常结束。若因为工具轮数上限、
 工具失败等硬性因素收束，报告会在 warnings 中说明。
+最终报告可以保留结构化 evidence，让代码行号和 web 引用跟随风险/建议进入 TUI 和 Markdown，
+而不是只停留在模型临时上下文里。
 
 如需启用可选 web search（联网搜索），配置 Tavily：
 
@@ -113,6 +116,22 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 ```
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
+
+### 真实 AI 审核验收测试
+
+仓库包含一个默认跳过的 live acceptance test，用于验证真实模型审查指定 PR 时，证据引用不会退化成
+`read_file` 404 或 `F1` 这类假路径链接。该测试会消耗模型额度并访问实时 GitHub PR，所以需要显式开启：
+
+```bash
+export DEEPSEEK_API_KEY="..."  # 或 OPENAI_API_KEY
+export XENGINEER_RUN_LIVE_AI_REVIEW_TEST=1
+export XENGINEER_LIVE_AI_REVIEW_PR_URL="https://github.com/owner/repo/pull/1"
+export XENGINEER_LIVE_AI_REVIEW_REPORT_PATH="live-ai-review.md"  # 可选，保存 Markdown 报告
+.venv/bin/python -m pytest tests/test_live_ai_review.py
+```
+
+如果本机同时配置了 DeepSeek 和 OpenAI key，应用会按正常运行规则优先使用 DeepSeek；要单独验收
+OpenAI 路径，可以在命令前临时加 `DEEPSEEK_API_KEY=`。
 
 启动后粘贴 PR 地址，例如：
 
@@ -174,6 +193,11 @@ xpr-review --language en
 prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 仍会裁剪。
 被跳过的文件会在最终报告中列出。
 
+diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 ID（例如 `F1`），模型可以调用
+`read_file(file_id="F1")`，不需要复制很长的仓库路径。`read_file` 和 `grep_code` 会返回带行号的
+代码上下文；`web_search` 会返回稳定 ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词
+要求把这些引用写进风险或建议的 `evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
+
 配置真实模型后，LangGraph agent 可以按需请求更多上下文：
 
 - `read_file`：读取 PR head commit 上的仓库相对路径文件。
@@ -194,5 +218,5 @@ prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进
   `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - GitHub Action 集成。
 - 基于相同 Review Core 的 Web UI。
-- 支持 PR review 模式，在完成 diff 行号映射后发布可选行内评论。
+- 支持 PR review 模式，在完成 GitHub 行内评论 position 映射后发布可选行内评论。
 - 可配置的组织级审查规则。

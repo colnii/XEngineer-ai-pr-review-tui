@@ -18,7 +18,7 @@ from xengineer_pr_review.locale import (
     normalize_language,
     translate_builtin_text,
 )
-from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
+from xengineer_pr_review.models import EvidenceReference, ReviewFinding, ReviewReport, ReviewSuggestion
 from xengineer_pr_review.pipeline import ReviewPipeline
 
 
@@ -69,15 +69,16 @@ class ReviewTUI(App):
                     yield Static(self._phase_text("Ready"), id="status")
                     with TabbedContent(initial="overview-tab"):
                         with TabPane(label("tab.overview", self.language), id="overview-tab"):
-                            yield RichLog(id="overview", wrap=True, highlight=True, markup=True)
+                            # Keep report panes plain text to avoid VS Code terminal repaint lag.
+                            yield RichLog(id="overview", wrap=True)
                         with TabPane(label("tab.risks", self.language), id="risks-tab"):
-                            yield RichLog(id="risks", wrap=True, highlight=True, markup=True)
+                            yield RichLog(id="risks", wrap=True)
                         with TabPane(label("tab.suggestions", self.language), id="suggestions-tab"):
-                            yield RichLog(id="suggestions", wrap=True, highlight=True, markup=True)
+                            yield RichLog(id="suggestions", wrap=True)
                         with TabPane(label("tab.files", self.language), id="files-tab"):
-                            yield RichLog(id="files", wrap=True, highlight=True, markup=True)
+                            yield RichLog(id="files", wrap=True)
                         with TabPane(label("tab.raw", self.language), id="raw-tab"):
-                            yield RichLog(id="raw", wrap=True, highlight=True, markup=True)
+                            yield RichLog(id="raw", wrap=True)
                 yield Static(self._meta_text(None), id="meta")
         yield Footer()
 
@@ -208,14 +209,14 @@ class ReviewTUI(App):
 
     def _render_overview(self, report: ReviewReport) -> None:
         overview = self.query_one("#overview", RichLog)
-        overview.write(f"[b]{report.pr_title}[/b]")
+        overview.write(report.pr_title)
         unknown = label("common.unknown", self.language)
         overview.write(
             f"{report.repo} #{report.pr_number} "
             f"{label('overview.by', self.language)} {report.author or unknown}"
         )
         overview.write("")
-        overview.write(f"[b]{label('report.summary', self.language)}[/b]\n{report.summary}")
+        overview.write(f"{label('report.summary', self.language)}\n{report.summary}")
         overview.write("")
         overview.write(
             f"{label('meta.changed_files', self.language)}: {len(report.changed_files)} | "
@@ -255,7 +256,7 @@ class ReviewTUI(App):
             files.write(f"- {path}")
         if report.omitted_files:
             files.write("")
-            files.write(f"[b]{label('report.omitted_files', self.language)}[/b]")
+            files.write(label("report.omitted_files", self.language))
             for path in report.omitted_files:
                 files.write(f"- {path}")
 
@@ -267,16 +268,16 @@ class ReviewTUI(App):
         )
         if report.ai_notes:
             raw.write("")
-            raw.write(f"[b]{label('report.ai_notes', self.language)}[/b]\n{report.ai_notes}")
+            raw.write(f"{label('report.ai_notes', self.language)}\n{report.ai_notes}")
         if report.raw_ai_output:
             raw.write("")
             raw.write(
-                f"[b]{label('report.raw_ai_output', self.language)}[/b]\n"
+                f"{label('report.raw_ai_output', self.language)}\n"
                 f"{report.raw_ai_output}"
             )
         if report.warnings:
             raw.write("")
-            raw.write(f"[b]{label('report.warnings', self.language)}[/b]")
+            raw.write(label("report.warnings", self.language))
             for warning in report.warnings:
                 raw.write(f"- {warning}")
         if not report.ai_notes and not report.raw_ai_output and not report.warnings:
@@ -325,29 +326,54 @@ class ReviewTUI(App):
 
     def _risk_card(self, finding: ReviewFinding) -> str:
         files = ", ".join(finding.files) if finding.files else label("common.none", self.language)
-        return "\n".join(
-            [
-                f"[b]{translate_builtin_text(finding.title, self.language)}[/b]",
-                f"{label('report.severity', self.language)}: "
-                f"{display_severity(finding.severity, self.language)} | "
-                f"{label('report.source', self.language)}: "
-                f"{display_source(finding.source, self.language)}",
-                f"{label('report.explanation', self.language)}: "
-                f"{translate_builtin_text(finding.explanation, self.language)}",
-                f"{label('report.related_files', self.language)}: {files}",
-            ]
-        )
+        lines = [
+            translate_builtin_text(finding.title, self.language),
+            f"{label('report.severity', self.language)}: "
+            f"{display_severity(finding.severity, self.language)} | "
+            f"{label('report.source', self.language)}: "
+            f"{display_source(finding.source, self.language)}",
+            f"{label('report.explanation', self.language)}: "
+            f"{translate_builtin_text(finding.explanation, self.language)}",
+            f"{label('report.related_files', self.language)}: {files}",
+        ]
+        lines.extend(self._evidence_lines(finding.evidence))
+        return "\n".join(lines)
 
     def _suggestion_card(self, suggestion: ReviewSuggestion) -> str:
         files = ", ".join(suggestion.files) if suggestion.files else label("common.none", self.language)
-        return "\n".join(
-            [
-                f"[b]{translate_builtin_text(suggestion.title, self.language)}[/b]",
-                f"{label('report.type', self.language)}: "
-                f"{display_suggestion_type(suggestion.suggestion_type, self.language)} | "
-                f"{label('report.confidence', self.language)}: "
-                f"{display_confidence(suggestion.confidence, self.language)}",
-                translate_builtin_text(suggestion.body, self.language),
-                f"{label('report.related_file', self.language)}: {files}",
-            ]
-        )
+        lines = [
+            translate_builtin_text(suggestion.title, self.language),
+            f"{label('report.type', self.language)}: "
+            f"{display_suggestion_type(suggestion.suggestion_type, self.language)} | "
+            f"{label('report.confidence', self.language)}: "
+            f"{display_confidence(suggestion.confidence, self.language)}",
+            translate_builtin_text(suggestion.body, self.language),
+            f"{label('report.related_file', self.language)}: {files}",
+        ]
+        lines.extend(self._evidence_lines(suggestion.evidence))
+        return "\n".join(lines)
+
+    def _evidence_lines(self, evidence: list[EvidenceReference]) -> list[str]:
+        if not evidence:
+            return []
+        return [
+            f"{label('report.evidence', self.language)}:",
+            *[f"- {_format_evidence_text(reference)}" for reference in evidence],
+        ]
+
+
+def _format_evidence_text(reference: EvidenceReference) -> str:
+    if reference.kind == "web":
+        label_text = f"{reference.label}: " if reference.label else ""
+        title = reference.title or reference.url or "web source"
+        url_text = f" {reference.url}" if reference.url and reference.url != title else ""
+        snippet = f" - {reference.snippet}" if reference.snippet else ""
+        return f"{label_text}{title}{url_text}{snippet}"
+    location = reference.path or "unknown"
+    if reference.line_start is not None:
+        if reference.line_end is not None and reference.line_end != reference.line_start:
+            location = f"{location}:{reference.line_start}-{reference.line_end}"
+        else:
+            location = f"{location}:{reference.line_start}"
+    snippet = f" - {reference.snippet}" if reference.snippet else ""
+    return f"{location}{snippet}"

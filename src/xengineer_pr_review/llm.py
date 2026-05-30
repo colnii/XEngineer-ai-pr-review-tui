@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from xengineer_pr_review.locale import normalize_language, prompt_language_instruction
-from xengineer_pr_review.models import ReviewFinding, ReviewSuggestion
+from xengineer_pr_review.models import EvidenceReference, ReviewFinding, ReviewSuggestion
 
 
 @dataclass(frozen=True)
@@ -183,8 +183,13 @@ def _review_system_message(language: str) -> str:
     return (
         "You are a pragmatic senior engineer reviewing a GitHub PR. "
         "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
-        "Risk items must include severity, title, explanation, and files. "
-        "Suggestion items must include type, text, related_file, and confidence. "
+        "Risk items must include severity, title, explanation, files, and evidence. "
+        "Suggestion items must include type, text, related_file, confidence, and evidence. "
+        "Use evidence objects with kind, file_id, path, line_start, line_end, url, title, snippet, and label. "
+        "Prefer file_id values from the changed file index when citing or reading changed files. "
+        "Use read_file and grep_code line numbers as code evidence. "
+        "Do not include snippets for code evidence; line numbers are the source of truth. "
+        "Use web_search result ids like W1 plus the result URL as web evidence for external facts. "
         f"{prompt_language_instruction(language)}"
     )
 
@@ -336,6 +341,9 @@ def _risk_from_mapping(item: Any) -> ReviewFinding | None:
         title=title,
         explanation=explanation or title,
         files=_files_from_value(item.get("files") or item.get("related_files") or item.get("related_file")),
+        evidence=_evidence_from_value(
+            item.get("evidence") or item.get("citations") or item.get("sources")
+        ),
     )
 
 
@@ -353,6 +361,9 @@ def _suggestion_from_mapping(item: Any) -> ReviewSuggestion | None:
         body=body or "Review this item manually.",
         files=_files_from_value(item.get("files") or item.get("related_files") or item.get("related_file")),
         confidence=_confidence(item.get("confidence")),
+        evidence=_evidence_from_value(
+            item.get("evidence") or item.get("citations") or item.get("sources")
+        ),
     )
 
 
@@ -366,6 +377,7 @@ def _risk_from_text(text: str) -> ReviewFinding:
         title=title,
         explanation=explanation,
         files=_extract_files(text),
+        evidence=_extract_evidence(text),
     )
 
 
@@ -380,6 +392,7 @@ def _suggestion_from_text(text: str) -> ReviewSuggestion:
         body=explanation,
         files=_extract_files(text),
         confidence=_confidence(_extract_labeled_value(text, "confidence")),
+        evidence=_extract_evidence(text),
     )
 
 
@@ -437,9 +450,53 @@ def _files_from_value(value: Any) -> list[str]:
     return []
 
 
+def _evidence_from_value(value: Any) -> list[EvidenceReference]:
+    references: list[EvidenceReference] = []
+    for item in _coerce_list(value):
+        reference = _evidence_from_mapping(item)
+        if reference is not None:
+            references.append(reference)
+    return references
+
+
+def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
+    if not isinstance(item, dict):
+        return None
+    line_start = _int_or_none(item.get("line_start") or item.get("start_line") or item.get("line"))
+    line_end = _int_or_none(item.get("line_end") or item.get("end_line"))
+    url = _clean_text(item.get("url") or item.get("link"))
+    kind_text = _clean_text(item.get("kind")).lower()
+    path = _clean_text(item.get("path") or item.get("file") or item.get("related_file"))
+    kind = "web" if kind_text == "web" or (not kind_text and url and not path) else "code"
+    if line_start is not None and line_end is None:
+        line_end = line_start
+    if line_start is not None and line_end is not None and line_end < line_start:
+        line_start, line_end = line_end, line_start
+    return EvidenceReference(
+        kind=kind,
+        file_id=_clean_text(item.get("file_id") or item.get("fileId")),
+        label=_clean_text(item.get("label") or item.get("id") or item.get("source_id")),
+        path=path,
+        line_start=line_start,
+        line_end=line_end,
+        url=url,
+        title=_clean_text(item.get("title") or item.get("name")),
+        snippet=_clean_text(item.get("snippet") or item.get("quote") or item.get("text")),
+    )
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _extract_files(text: str) -> list[str]:
     labeled_matches = re.findall(
-        r"\bFiles?\s*:\s*([^\n]+?)(?=\s+\b(?:Confidence|Severity|Type)\b\s*:|$)",
+        r"\bFiles?\s*:\s*([^\n]+?)(?=\s+\b(?:Confidence|Evidence|Citation|Citations|Sources?|Severity|Type)\b\s*:|$)",
         text,
         re.I,
     )
@@ -447,6 +504,55 @@ def _extract_files(text: str) -> list[str]:
         labeled = labeled_matches[-1].strip().rstrip(".;")
         return [item.strip("` ") for item in re.split(r"[, ]+", labeled) if item.strip("` ")]
     return [match.strip("`") for match in re.findall(r"`?[\w./-]+\.[\w-]+`?", text)]
+
+
+def _extract_evidence(text: str) -> list[EvidenceReference]:
+    labeled_matches = re.findall(
+        r"\b(?:Evidence|Citations?|Sources?)\s*:\s*([^\n]+?)(?=\s+\bConfidence\b\s*:|$)",
+        text,
+        re.I,
+    )
+    if not labeled_matches:
+        return []
+    evidence: list[EvidenceReference] = []
+    for raw_item in re.split(r"\s*;\s*", labeled_matches[-1].strip().rstrip(".;")):
+        item = raw_item.strip()
+        if not item:
+            continue
+        evidence.extend(_evidence_items_from_text(item))
+    return evidence
+
+
+def _evidence_items_from_text(text: str) -> list[EvidenceReference]:
+    items: list[EvidenceReference] = []
+    code_match = re.search(
+        r"`?(?P<path>[\w./-]+\.[\w-]+)`?:(?P<start>\d+)(?:-(?P<end>\d+))?",
+        text,
+    )
+    if code_match:
+        start = int(code_match.group("start"))
+        end = int(code_match.group("end") or start)
+        items.append(
+            EvidenceReference(
+                kind="code",
+                path=code_match.group("path").strip("`"),
+                line_start=start,
+                line_end=end,
+            )
+        )
+    web_match = re.search(
+        r"(?:\[(?P<label>[A-Za-z]\d+)\]\s*)?(?P<url>https?://[^\s;]+)",
+        text,
+    )
+    if web_match:
+        items.append(
+            EvidenceReference(
+                kind="web",
+                label=_clean_text(web_match.group("label")),
+                url=web_match.group("url").rstrip(".,)"),
+            )
+        )
+    return items
 
 
 def _extract_labeled_value(text: str, label: str) -> str:
@@ -461,7 +567,13 @@ def _leading_label(text: str) -> str:
 
 def _remove_inline_metadata(text: str) -> str:
     text = re.sub(
-        r"\bFile(?:s)?\s*:\s*[^\n]+?(?=\s+\bConfidence\b\s*:|$)",
+        r"\bFile(?:s)?\s*:\s*[^\n]+?(?=\s+\b(?:Confidence|Evidence|Citation|Citations|Sources?)\b\s*:|$)",
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"\b(?:Evidence|Citations?|Sources?)\s*:\s*[^\n]+?(?=\s+\bConfidence\b\s*:|$)",
         "",
         text,
         flags=re.I,

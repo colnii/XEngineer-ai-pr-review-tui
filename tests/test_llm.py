@@ -125,7 +125,23 @@ def test_parse_llm_json_output() -> None:
               "severity": "medium",
               "title": "Wrapper compatibility",
               "explanation": "Custom wrappers may still expose partial file APIs.",
-              "files": ["src/requests/models.py"]
+              "files": ["src/requests/models.py"],
+              "evidence": [
+                {
+                  "kind": "code",
+                  "path": "src/requests/models.py",
+                  "line_start": 42,
+                  "line_end": 45,
+                  "snippet": "is_stream = ..."
+                },
+                {
+                  "kind": "web",
+                  "label": "W1",
+                  "title": "urllib3 docs",
+                  "url": "https://urllib3.readthedocs.io/example",
+                  "snippet": "Wrapper behavior changed upstream."
+                }
+              ]
             }
           ],
           "suggestions": [
@@ -144,10 +160,127 @@ def test_parse_llm_json_output() -> None:
     assert result.summary == "This PR tightens stream detection."
     assert result.risks[0].source == "ai"
     assert result.risks[0].title == "Wrapper compatibility"
+    risk_evidence = getattr(result.risks[0], "evidence", [])
+    assert risk_evidence[0].path == "src/requests/models.py"
+    assert risk_evidence[0].line_start == 42
+    assert risk_evidence[1].kind == "web"
+    assert risk_evidence[1].url == "https://urllib3.readthedocs.io/example"
     assert result.suggestions[0].suggestion_type == "test"
     assert result.suggestions[0].files == ["tests/test_requests.py"]
     assert result.notes == "Assumes urllib3 behavior is unchanged."
     assert result.warnings == []
+
+
+def test_parse_llm_json_output_accepts_citations_alias_on_suggestions() -> None:
+    result = parse_llm_output(
+        """
+        {
+          "summary": "Add tests for the changed path.",
+          "risks": [],
+          "suggestions": [
+            {
+              "type": "test",
+              "text": "Cover the new parser branch.",
+              "related_file": "tests/test_parser.py",
+              "citations": [
+                {"kind": "code", "path": "src/parser.py", "line": 88}
+              ],
+              "confidence": "high"
+            }
+          ]
+        }
+        """
+    )
+
+    suggestion_evidence = getattr(result.suggestions[0], "evidence", [])
+    assert suggestion_evidence[0].kind == "code"
+    assert suggestion_evidence[0].path == "src/parser.py"
+    assert suggestion_evidence[0].line_start == 88
+    assert suggestion_evidence[0].line_end == 88
+
+
+def test_parse_llm_json_output_treats_url_citation_as_web_evidence() -> None:
+    result = parse_llm_output(
+        """
+        {
+          "summary": "External behavior matters.",
+          "risks": [
+            {
+              "severity": "low",
+              "title": "External API changed",
+              "explanation": "The dependency docs describe a behavior change.",
+              "citations": [
+                {"label": "W1", "url": "https://example.test/api-change"}
+              ]
+            }
+          ],
+          "suggestions": []
+        }
+        """
+    )
+
+    evidence = result.risks[0].evidence[0]
+    assert evidence.kind == "web"
+    assert evidence.label == "W1"
+    assert evidence.url == "https://example.test/api-change"
+
+
+def test_parse_llm_json_output_keeps_path_and_url_citation_as_code_evidence() -> None:
+    result = parse_llm_output(
+        """
+        {
+          "summary": "Code location matters.",
+          "risks": [
+            {
+              "severity": "low",
+              "title": "Code behavior changed",
+              "explanation": "The changed line has a related source link.",
+              "citations": [
+                {
+                  "path": "src/app.py",
+                  "line": 9,
+                  "url": "https://github.com/owner/repo/blob/abc/src/app.py#L9"
+                }
+              ]
+            }
+          ],
+          "suggestions": []
+        }
+        """
+    )
+
+    evidence = result.risks[0].evidence[0]
+    assert evidence.kind == "code"
+    assert evidence.path == "src/app.py"
+    assert evidence.url == "https://github.com/owner/repo/blob/abc/src/app.py#L9"
+
+
+def test_parse_llm_markdown_output_extracts_evidence_metadata() -> None:
+    result = parse_llm_output(
+        """
+        ### Summary
+        The PR adds structured evidence.
+
+        ### Risks
+        - Low: Citation fallback can be missing. File: src/review.py. Evidence: src/review.py:12-16; [W1] https://example.test/source
+
+        ### Suggestions
+        - Test: Add coverage for markdown evidence parsing. File: tests/test_llm.py. Evidence: tests/test_llm.py:45. Confidence: high.
+        """
+    )
+
+    risk_evidence = result.risks[0].evidence
+    assert risk_evidence[0].kind == "code"
+    assert risk_evidence[0].path == "src/review.py"
+    assert risk_evidence[0].line_start == 12
+    assert risk_evidence[0].line_end == 16
+    assert risk_evidence[1].kind == "web"
+    assert risk_evidence[1].label == "W1"
+    assert risk_evidence[1].url == "https://example.test/source"
+    suggestion_evidence = result.suggestions[0].evidence[0]
+    assert suggestion_evidence.path == "tests/test_llm.py"
+    assert suggestion_evidence.line_start == 45
+    assert result.suggestions[0].confidence == "high"
 
 
 def test_parse_llm_json_output_embedded_in_markdown_fence() -> None:

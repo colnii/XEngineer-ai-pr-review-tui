@@ -70,6 +70,7 @@ LOW_SIGNAL_EXTENSIONS = {
 class LLMContext:
     prompt: str
     omitted_files: list[str]
+    file_ids: dict[str, str]
 
 
 def build_llm_context(
@@ -88,10 +89,19 @@ def build_llm_context(
     if max_files is not None:
         omitted.extend(file.path for file in included[max_files:])
         included = included[:max_files]
+    file_ids = {
+        f"F{index}": file.path
+        for index, file in enumerate(included, start=1)
+    }
+    file_id_by_path = {path: file_id for file_id, path in file_ids.items()}
 
     finding_lines = [
         f"- {finding.severity}: {finding.title} ({', '.join(finding.files)})"
         for finding in findings
+    ]
+    file_index_lines = [
+        f"- {file_id}: {path}"
+        for file_id, path in file_ids.items()
     ]
     file_blocks: list[str] = []
 
@@ -99,8 +109,13 @@ def build_llm_context(
         hunk_text = "\n".join(file.hunks)
         if len(hunk_text) > max_hunk_chars:
             hunk_text = hunk_text[:max_hunk_chars] + "\n[truncated]"
+        line_ranges = _format_line_ranges(file.line_ranges)
         file_blocks.append(
-            f"File: {file.path}\nAdditions: {file.additions}, Deletions: {file.deletions}\n{hunk_text}"
+            f"File ID: {file_id_by_path[file.path]}\n"
+            f"File: {file.path}\n"
+            f"Additions: {file.additions}, Deletions: {file.deletions}\n"
+            f"Changed line ranges: {line_ranges}\n"
+            f"{hunk_text}"
         )
 
     prompt = "\n\n".join(
@@ -109,11 +124,12 @@ def build_llm_context(
             f"Author: {pr.author}",
             f"Branches: {pr.base_branch} <- {pr.head_branch}",
             "Rule findings:\n" + ("\n".join(finding_lines) if finding_lines else "- none"),
+            "Changed file index:\n" + ("\n".join(file_index_lines) if file_index_lines else "- none"),
             "Changed files:\n" + "\n\n".join(file_blocks),
             "Return concise review output with summary, risks, and reviewer suggestions.",
         ]
     )
-    return LLMContext(prompt=prompt, omitted_files=omitted)
+    return LLMContext(prompt=prompt, omitted_files=omitted, file_ids=file_ids)
 
 
 def _has_review_signal(path: str) -> bool:
@@ -134,3 +150,12 @@ def _has_review_signal(path: str) -> bool:
 
 def has_review_signal(path: str) -> bool:
     return _has_review_signal(path)
+
+
+def _format_line_ranges(line_ranges: tuple[tuple[int, int], ...]) -> str:
+    if not line_ranges:
+        return "unknown"
+    return ", ".join(
+        str(start) if start == end else f"{start}-{end}"
+        for start, end in line_ranges
+    )

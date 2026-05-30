@@ -91,6 +91,7 @@ LABELS: dict[str, dict[Language, str]] = {
     "report.finding_title": {"zh": "标题", "en": "Title"},
     "report.explanation": {"zh": "说明", "en": "Explanation"},
     "report.related_files": {"zh": "相关文件", "en": "Related files"},
+    "report.evidence": {"zh": "证据", "en": "Evidence"},
     "report.type": {"zh": "类型", "en": "Type"},
     "report.suggestion": {"zh": "建议", "en": "Suggestion"},
     "report.related_file": {"zh": "相关文件", "en": "Related file"},

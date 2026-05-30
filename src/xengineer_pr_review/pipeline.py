@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Protocol, TypeGuard
+from urllib.parse import quote
 
 from xengineer_pr_review.context import build_llm_context
 from xengineer_pr_review.diff_parser import parse_unified_diff
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.llm import MockLLMClient
-from xengineer_pr_review.models import PullRequestData, PullRequestRef, ReviewReport
+from xengineer_pr_review.models import (
+    ChangedFile,
+    EvidenceReference,
+    PullRequestData,
+    PullRequestRef,
+    ReviewFinding,
+    ReviewReport,
+    ReviewSuggestion,
+)
 from xengineer_pr_review.pr_url import parse_pr_url
 from xengineer_pr_review.review_tools import ReviewToolbox, default_web_searcher
 from xengineer_pr_review.rules import analyze_rules
@@ -55,7 +64,7 @@ class ReviewPipeline:
         findings = analyze_rules(files)
         context = build_llm_context(pr, findings)
         try:
-            llm_result = self._analyze_with_optional_tools(context.prompt, pr)
+            llm_result = self._analyze_with_optional_tools(context.prompt, pr, context.file_ids)
             summary = llm_result.summary
             findings = [*findings, *llm_result.risks]
             suggestions = llm_result.suggestions
@@ -71,6 +80,7 @@ class ReviewPipeline:
             ai_notes = ""
             raw_ai_output = ""
 
+        _enrich_review_item_evidence(findings, suggestions, pr, context.file_ids)
         return ReviewReport(
             pr_title=pr.title,
             pr_url=pr_url,
@@ -94,7 +104,12 @@ class ReviewPipeline:
         ref = parse_pr_url(pr_url)
         return self.github.post_pr_comment(ref, body)
 
-    def _analyze_with_optional_tools(self, prompt: str, pr: PullRequestData):
+    def _analyze_with_optional_tools(
+        self,
+        prompt: str,
+        pr: PullRequestData,
+        file_ids: dict[str, str],
+    ):
         if not getattr(self.llm, "supports_review_tools", False):
             return self.llm.analyze(prompt)
         if not _github_supports_read_tools(self.github):
@@ -105,9 +120,163 @@ class ReviewPipeline:
             ref=pr.ref,
             git_ref=pr.head_sha or pr.head_branch,
             web_searcher=default_web_searcher(),
+            file_ids=file_ids,
         )
-        return self.llm.analyze(prompt, toolbox=toolbox)
+        result = self.llm.analyze(prompt, toolbox=toolbox)
+        _hydrate_web_evidence(result.risks, result.suggestions, toolbox.web_sources)
+        return result
 
 
 def _github_supports_read_tools(github: GitHubLike) -> TypeGuard[GitHubReadLike]:
     return hasattr(github, "fetch_file_text") and hasattr(github, "fetch_tree_paths")
+
+
+def _enrich_review_item_evidence(
+    findings: list[ReviewFinding],
+    suggestions: list[ReviewSuggestion],
+    pr: PullRequestData,
+    file_ids: dict[str, str],
+) -> None:
+    files_by_path = {file.path: file for file in pr.files}
+    for item in [*findings, *suggestions]:
+        item.files = _normalize_item_files(item.files, file_ids, files_by_path)
+        _hydrate_code_evidence_urls(item.evidence, pr, file_ids, files_by_path)
+        for path in item.files:
+            if not _has_code_evidence_for_path(item.evidence, path):
+                item.evidence.extend(_code_evidence_for_path(path, files_by_path, pr))
+
+
+def _hydrate_web_evidence(
+    findings: list[ReviewFinding],
+    suggestions: list[ReviewSuggestion],
+    web_sources: list[EvidenceReference],
+) -> None:
+    if not web_sources:
+        return
+    by_label = {source.label: source for source in web_sources if source.label}
+    by_url = {source.url: source for source in web_sources if source.url}
+    for item in [*findings, *suggestions]:
+        hydrated: list[EvidenceReference] = []
+        for reference in item.evidence:
+            if reference.kind != "web":
+                hydrated.append(reference)
+                continue
+            source = by_label.get(reference.label) or by_url.get(reference.url)
+            if source is None:
+                hydrated.append(reference)
+                continue
+            hydrated.append(
+                reference.model_copy(
+                    update={
+                        "label": reference.label or source.label,
+                        "url": reference.url or source.url,
+                        "title": reference.title or source.title,
+                        "snippet": reference.snippet or source.snippet,
+                    }
+                )
+            )
+        item.evidence = hydrated
+
+
+def _hydrate_code_evidence_urls(
+    evidence: list[EvidenceReference],
+    pr: PullRequestData,
+    file_ids: dict[str, str],
+    files_by_path: dict[str, ChangedFile],
+) -> None:
+    hydrated: list[EvidenceReference] = []
+    for reference in evidence:
+        if reference.kind != "code":
+            hydrated.append(reference)
+            continue
+        file_id = reference.file_id
+        path = reference.path
+        if path in file_ids:
+            file_id = file_id or path
+            path = file_ids[path]
+        elif not path and file_id:
+            path = file_ids.get(file_id, "")
+        if not path or path not in files_by_path:
+            continue
+        if reference.url and reference.path and reference.path not in file_ids:
+            hydrated.append(_without_code_snippet(reference))
+            continue
+        hydrated.append(
+            reference.model_copy(
+                update={
+                    "file_id": file_id,
+                    "path": path,
+                    "url": reference.url
+                    or _github_blob_url(pr, path, reference.line_start, reference.line_end),
+                    "snippet": "",
+                }
+            )
+        )
+    evidence[:] = hydrated
+
+
+def _normalize_item_files(
+    paths: list[str],
+    file_ids: dict[str, str],
+    files_by_path: dict[str, ChangedFile],
+) -> list[str]:
+    normalized: list[str] = []
+    for path in paths:
+        mapped = file_ids.get(path, path)
+        if mapped not in files_by_path or mapped in normalized:
+            continue
+        normalized.append(mapped)
+    return normalized
+
+
+def _without_code_snippet(reference: EvidenceReference) -> EvidenceReference:
+    if not reference.snippet:
+        return reference
+    return reference.model_copy(update={"snippet": ""})
+
+
+def _has_code_evidence_for_path(evidence: list[EvidenceReference], path: str) -> bool:
+    return any(reference.kind == "code" and reference.path == path for reference in evidence)
+
+
+def _code_evidence_for_path(
+    path: str,
+    files_by_path: dict[str, ChangedFile],
+    pr: PullRequestData,
+) -> list[EvidenceReference]:
+    changed_file = files_by_path.get(path)
+    line_ranges = changed_file.line_ranges if changed_file is not None else ()
+    if not line_ranges:
+        return [
+            EvidenceReference(
+                kind="code",
+                path=path,
+                url=_github_blob_url(pr, path, None, None),
+            )
+        ]
+    return [
+        EvidenceReference(
+            kind="code",
+            path=path,
+            line_start=start,
+            line_end=end,
+            url=_github_blob_url(pr, path, start, end),
+        )
+        for start, end in line_ranges
+    ]
+
+
+def _github_blob_url(
+    pr: PullRequestData,
+    path: str,
+    line_start: int | None,
+    line_end: int | None,
+) -> str:
+    git_ref = pr.head_sha or pr.head_branch
+    encoded_path = quote(path.strip("/"), safe="/")
+    url = f"https://github.com/{pr.ref.owner}/{pr.ref.repo}/blob/{git_ref}/{encoded_path}"
+    if line_start is None:
+        return url
+    if line_end is not None and line_end != line_start:
+        return f"{url}#L{line_start}-L{line_end}"
+    return f"{url}#L{line_start}"

@@ -172,6 +172,7 @@ class LangGraphReviewClient:
                 tool_names = "read_file, grep_code, and web_search"
             system += (
                 f" You may call {tool_names} when the diff is not enough. "
+                "Prefer read_file file_id values from the changed file index instead of copying paths. "
                 "Continue using tools only while they add review value. "
                 "When you have enough evidence, stop calling tools and return the final JSON report."
             )
@@ -234,6 +235,7 @@ def _dispatch_tool_call(toolbox: Any | None, call: dict[str, Any]) -> str:
         return toolbox.read_file(
             str(arguments.get("path", "")),
             max_lines=_int_argument(arguments, "max_lines", 1000),
+            file_id=str(arguments.get("file_id", "")),
         )
     if name == "grep_code":
         return toolbox.grep_code(
@@ -283,10 +285,13 @@ def _tool_schemas(web_search_enabled: bool) -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "file_id": {
+                            "type": "string",
+                            "description": "Preferred short id from the changed file index, such as F1.",
+                        },
                         "path": {"type": "string"},
                         "max_lines": {"type": "integer", "minimum": 1, "maximum": 1000},
                     },
-                    "required": ["path"],
                     "additionalProperties": False,
                 },
             },

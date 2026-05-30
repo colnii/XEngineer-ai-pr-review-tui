@@ -39,6 +39,7 @@ the `socksio` dependency is installed.
 - TUI entry point.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
+- Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
 - Markdown export.
 - Manual PR conversation comment publishing after human confirmation.
 
@@ -89,6 +90,8 @@ Real model mode uses a LangGraph-backed review agent. During the LLM review step
 may call bounded read-only tools to inspect files at the PR head commit or grep repository code
 before returning the final structured report. The normal stop condition is the model returning a
 final report without more tool calls; hard limits or tool errors are surfaced in report warnings.
+The final report can carry structured evidence objects so code line references and web citations
+survive export instead of staying only in the model transcript.
 
 Optional web search can be enabled with Tavily:
 
@@ -123,6 +126,25 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 ```
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
+
+### Live AI Review Acceptance Test
+
+The repository includes a skipped-by-default live acceptance test for validating that a
+real model review of a target PR keeps evidence references hydrated, without `read_file`
+404 warnings or fake `F1` path links. It consumes model quota and reads a live GitHub PR,
+so it must be enabled explicitly:
+
+```bash
+export DEEPSEEK_API_KEY="..."  # or OPENAI_API_KEY
+export XENGINEER_RUN_LIVE_AI_REVIEW_TEST=1
+export XENGINEER_LIVE_AI_REVIEW_PR_URL="https://github.com/owner/repo/pull/1"
+export XENGINEER_LIVE_AI_REVIEW_REPORT_PATH="live-ai-review.md"  # optional Markdown output
+.venv/bin/python -m pytest tests/test_live_ai_review.py
+```
+
+If both DeepSeek and OpenAI keys are configured, the app follows its normal provider
+priority and uses DeepSeek first. To validate the OpenAI path specifically, prefix the
+command with `DEEPSEEK_API_KEY=`.
 
 Paste a PR URL such as:
 
@@ -173,6 +195,13 @@ Review-relevant files are no longer trimmed by count. The prompt skips obvious l
 such as lockfiles, generated bundles, binary assets, and archives; long hunks are still trimmed.
 Skipped files are listed in the final report.
 
+Diff hunks are indexed with changed line ranges. Changed files also get short IDs such as `F1`,
+so the model can call `read_file(file_id="F1")` instead of copying long repository paths.
+`read_file` and `grep_code` return line-numbered code context, and `web_search` returns stable IDs
+such as `[W1]` with the result URL and snippet. The model is prompted to copy those references into
+`evidence` objects on risks or suggestions; the TUI and Markdown export render that evidence under
+the corresponding review item.
+
 When a real model is configured, the LangGraph agent can request extra context with:
 
 - `read_file`: read a repository-relative file from the PR head commit.
@@ -195,5 +224,5 @@ When a real model is configured, the LangGraph agent can request extra context w
   backed by a small Node wrapper around the packaged Python app.
 - GitHub Action integration.
 - Web UI using the same review core.
-- Pull request review mode with optional inline comments after diff-line mapping is implemented.
+- Pull request review mode with optional inline comments after GitHub inline-position mapping is implemented.
 - Configurable organization-specific review rules.

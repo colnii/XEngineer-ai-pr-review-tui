@@ -10,6 +10,7 @@ Severity = Literal["high", "medium", "low"]
 FindingSource = Literal["rule", "ai"]
 SuggestionType = Literal["comment", "test", "maintainability", "edge-case"]
 Confidence = Literal["high", "medium", "low"]
+EvidenceKind = Literal["code", "web"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class ChangedFile:
     additions: int = 0
     deletions: int = 0
     hunks: tuple[str, ...] = ()
+    line_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -44,12 +46,25 @@ class PostedComment:
     html_url: str
 
 
+class EvidenceReference(BaseModel):
+    kind: EvidenceKind = "code"
+    file_id: str = ""
+    label: str = ""
+    path: str = ""
+    line_start: int | None = None
+    line_end: int | None = None
+    url: str = ""
+    title: str = ""
+    snippet: str = ""
+
+
 class ReviewFinding(BaseModel):
     severity: Severity
     source: FindingSource = "rule"
     title: str
     explanation: str
     files: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceReference] = Field(default_factory=list)
 
 
 class ReviewSuggestion(BaseModel):
@@ -59,6 +74,7 @@ class ReviewSuggestion(BaseModel):
     body: str
     files: list[str] = Field(default_factory=list)
     confidence: Confidence = "medium"
+    evidence: list[EvidenceReference] = Field(default_factory=list)
 
 
 class ReviewReport(BaseModel):

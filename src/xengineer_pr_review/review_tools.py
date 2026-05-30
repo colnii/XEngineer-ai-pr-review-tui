@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from difflib import get_close_matches
 import os
 import re
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ from typing import Protocol
 import httpx
 
 from xengineer_pr_review.context import has_review_signal
-from xengineer_pr_review.models import PullRequestRef
+from xengineer_pr_review.models import EvidenceReference, PullRequestRef
 
 
 MAX_READ_LINES = 1000
@@ -34,22 +35,34 @@ class ReviewToolbox:
     ref: PullRequestRef
     git_ref: str
     web_searcher: WebSearchLike | None = None
+    file_ids: dict[str, str] = field(default_factory=dict)
     _tree_paths_cache: list[str] | None = field(default=None, init=False, repr=False)
     _file_text_cache: OrderedDict[str, str] = field(
         default_factory=OrderedDict,
         init=False,
         repr=False,
     )
+    web_sources: list[EvidenceReference] = field(default_factory=list, init=False)
 
-    def read_file(self, path: str, max_lines: int = MAX_READ_LINES) -> str:
+    def read_file(
+        self,
+        path: str = "",
+        max_lines: int = MAX_READ_LINES,
+        file_id: str = "",
+    ) -> str:
         try:
-            path = _validate_relative_path(path)
+            path = self._resolve_read_path(path=path, file_id=file_id)
+            if path.startswith("read_file note:"):
+                return path
             max_lines = _bounded_int(
                 max_lines,
                 default=MAX_READ_LINES,
                 minimum=1,
                 maximum=MAX_READ_LINES,
             )
+            missing_note = self._missing_path_note(path)
+            if missing_note:
+                return missing_note
             text = self._fetch_file_text(path)
         except Exception as exc:
             return f"read_file error for {path}: {exc}"
@@ -62,6 +75,35 @@ class ReviewToolbox:
                 f"[truncated after {max_lines} lines; single file is too large to read fully]"
             )
         return "\n".join([f"File: {path}", *numbered])
+
+    def _resolve_read_path(self, path: str, file_id: str) -> str:
+        normalized_file_id = str(file_id or "").strip()
+        if normalized_file_id:
+            mapped = self.file_ids.get(normalized_file_id)
+            if mapped:
+                return mapped
+            return (
+                f"read_file note: unknown file_id {normalized_file_id}. "
+                f"Available file_ids: {_format_file_ids(self.file_ids)}"
+            )
+        return _validate_relative_path(path)
+
+    def _missing_path_note(self, path: str) -> str:
+        if not self.file_ids:
+            return ""
+        try:
+            paths = self._fetch_tree_paths()
+        except Exception:
+            return ""
+        if path in paths:
+            return ""
+        matches = _close_path_matches(path, paths)
+        match_text = ", ".join(matches) if matches else "none"
+        return (
+            f"read_file note: path not found: {path}. "
+            f"Close matches: {match_text}. "
+            "Prefer file_id from the changed file index when reading PR files."
+        )
 
     def grep_code(
         self,
@@ -128,12 +170,30 @@ class ReviewToolbox:
             return "web_search error: search request failed."
         if not results:
             return f"web_search found no results for query: {query}"
-        lines = [f"Web search results for: {query}"]
-        for index, result in enumerate(results[:max_results], start=1):
+        lines = [
+            f"Web search results for: {query}",
+            "Use citation id [W1], [W2], etc. in final JSON evidence for external facts.",
+        ]
+        for index, result in enumerate(results[:max_results], start=len(self.web_sources) + 1):
+            citation_id = f"W{index}"
             title = result.get("title") or "Untitled result"
             url = result.get("url") or ""
             content = " ".join((result.get("content") or "").split())
-            lines.append(f"{index}. {title}\n   URL: {url}\n   Snippet: {content}")
+            self.web_sources.append(
+                EvidenceReference(
+                    kind="web",
+                    label=citation_id,
+                    title=title,
+                    url=url,
+                    snippet=content,
+                )
+            )
+            lines.append(
+                f"[{citation_id}] {title}\n"
+                f"   URL: {url}\n"
+                f"   Snippet: {content}\n"
+                f"   Use citation id [{citation_id}] with this URL."
+            )
         return "\n".join(lines)
 
     def _fetch_tree_paths(self) -> list[str]:
@@ -212,6 +272,25 @@ def _validate_relative_path(path: str) -> str:
     ):
         raise ValueError("path must be a repository-relative file path")
     return normalized
+
+
+def _format_file_ids(file_ids: dict[str, str]) -> str:
+    if not file_ids:
+        return "none"
+    return ", ".join(f"{file_id}={path}" for file_id, path in file_ids.items())
+
+
+def _close_path_matches(path: str, paths: list[str], limit: int = 5) -> list[str]:
+    basename = path.rsplit("/", 1)[-1].lower()
+    matches: list[str] = [
+        candidate
+        for candidate in paths
+        if candidate.rsplit("/", 1)[-1].lower() == basename
+    ]
+    for candidate in get_close_matches(path, paths, n=limit, cutoff=0.35):
+        if candidate not in matches:
+            matches.append(candidate)
+    return matches[:limit]
 
 
 def _bounded_int(value: int, default: int, minimum: int, maximum: int) -> int:
