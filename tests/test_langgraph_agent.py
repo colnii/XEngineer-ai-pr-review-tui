@@ -22,9 +22,10 @@ def test_langgraph_review_client_loops_until_model_returns_final_json() -> None:
     result = client.analyze("PR title: demo", toolbox=toolbox)
 
     assert result.summary == "Read extra context."
-    assert toolbox.calls == [("read_file", "src/app.py", 5)]
+    assert toolbox.calls == [("read_file", "src/app.py", "", 5)]
     assert [call["tool_choice"] for call in completions.calls] == ["auto", "auto"]
     assert completions.calls[0]["tools"][0]["function"]["name"] == "read_file"
+    assert "file_id" in completions.calls[0]["tools"][0]["function"]["parameters"]["properties"]
     assert completions.calls[1]["messages"][-1] == {
         "role": "tool",
         "tool_call_id": "call-1",
@@ -106,7 +107,29 @@ def test_langgraph_review_client_tolerates_bad_integer_tool_args() -> None:
     result = client.analyze("PR title: demo", toolbox=toolbox)
 
     assert result.summary == "Recovered from bad args."
-    assert toolbox.calls == [("read_file", "src/app.py", 1000)]
+    assert toolbox.calls == [("read_file", "src/app.py", "", 1000)]
+
+
+def test_langgraph_review_client_dispatches_read_file_by_file_id() -> None:
+    completions = FakeChatCompletions(
+        [
+            _tool_call_message("call-1", "read_file", {"file_id": "F1", "max_lines": 3}),
+            _assistant_message(
+                '{"summary": "Read indexed file.", "risks": [], "suggestions": []}'
+            ),
+        ]
+    )
+    toolbox = FakeToolbox()
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        chat_completions=completions,
+    )
+
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Read indexed file."
+    assert toolbox.calls == [("read_file", "", "F1", 3)]
 
 
 def test_langgraph_review_client_does_not_warn_on_file_content_with_error_word() -> None:
@@ -177,8 +200,10 @@ def test_langgraph_review_client_prompt_requires_structured_evidence() -> None:
 
     system_message = completions.calls[0]["messages"][0]["content"]
     assert "evidence" in system_message
+    assert "file_id" in system_message
     assert "line_start" in system_message
     assert "url" in system_message
+    assert "Do not include snippets for code evidence" in system_message
     assert "Use web_search result ids like W1" in system_message
 
 
@@ -210,8 +235,8 @@ class FakeToolbox:
         self.calls: list[tuple[object, ...]] = []
         self.read_file_result = "File: src/app.py\n1: print('hello')"
 
-    def read_file(self, path: str, max_lines: int = 1000) -> str:
-        self.calls.append(("read_file", path, max_lines))
+    def read_file(self, path: str = "", max_lines: int = 1000, file_id: str = "") -> str:
+        self.calls.append(("read_file", path, file_id, max_lines))
         return self.read_file_result
 
     def grep_code(

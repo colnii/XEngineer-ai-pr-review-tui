@@ -162,9 +162,10 @@ xpr-review --language en
 prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 仍会裁剪。
 被跳过的文件会在最终报告中列出。
 
-diff hunk 会被索引为变更后的行号范围。`read_file` 和 `grep_code` 会返回带行号的代码上下文；
-`web_search` 会返回稳定 ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词要求把这些
-引用写进风险或建议的 `evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
+diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 ID（例如 `F1`），模型可以调用
+`read_file(file_id="F1")`，不需要复制很长的仓库路径。`read_file` 和 `grep_code` 会返回带行号的
+代码上下文；`web_search` 会返回稳定 ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词
+要求把这些引用写进风险或建议的 `evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
 
 配置真实模型后，LangGraph agent 可以按需请求更多上下文：
 

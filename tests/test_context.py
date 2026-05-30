@@ -21,6 +21,10 @@ def test_context_includes_all_meaningful_files_without_file_count_limit() -> Non
     assert "Improve auth" in context.prompt
     assert "src/module_0.py" in context.prompt
     assert "src/module_9.py" in context.prompt
+    assert "Changed file index:" in context.prompt
+    assert "F1: src/module_0.py" in context.prompt
+    assert context.file_ids["F1"] == "src/module_0.py"
+    assert context.file_ids["F10"] == "src/module_9.py"
     assert context.omitted_files == []
 
 

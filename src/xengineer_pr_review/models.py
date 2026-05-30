@@ -48,6 +48,7 @@ class PostedComment:
 
 class EvidenceReference(BaseModel):
     kind: EvidenceKind = "code"
+    file_id: str = ""
     label: str = ""
     path: str = ""
     line_start: int | None = None

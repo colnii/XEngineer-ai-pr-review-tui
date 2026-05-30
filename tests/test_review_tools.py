@@ -28,6 +28,85 @@ def test_read_file_returns_bounded_numbered_content() -> None:
     assert github.requests == [("read", "src/app.py", "abc123")]
 
 
+def test_read_file_accepts_file_id_without_copying_path() -> None:
+    github = FakeGitHub(
+        files={
+            "src/app.py": "first\nsecond\n",
+        },
+        tree_paths=["src/app.py"],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        file_ids={"F1": "src/app.py"},
+    )
+
+    result = toolbox.read_file(file_id="F1", max_lines=1)
+
+    assert "File: src/app.py" in result
+    assert "1: first" in result
+    assert github.requests == [("tree", "", "abc123"), ("read", "src/app.py", "abc123")]
+
+
+def test_read_file_file_id_for_deleted_path_returns_note_without_fetching() -> None:
+    github = FakeGitHub(
+        files={},
+        tree_paths=["src/app.py"],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        file_ids={"F2": "src/deleted.py"},
+    )
+
+    result = toolbox.read_file(file_id="F2")
+
+    assert result.startswith("read_file note: path not found")
+    assert "src/deleted.py" in result
+    assert github.requests == [("tree", "", "abc123")]
+
+
+def test_read_file_unknown_path_returns_note_with_close_matches_without_fetching() -> None:
+    github = FakeGitHub(
+        files={
+            "src/isotope/demo/live_smoke/llm_live_smoke.py": "print('ok')\n",
+        },
+        tree_paths=[
+            "src/isotope/demo/live_smoke/llm_live_smoke.py",
+            "src/isotope/demo/live_smoke/cases.py",
+        ],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        file_ids={"F1": "src/isotope/demo/live_smoke/llm_live_smoke.py"},
+    )
+
+    result = toolbox.read_file("src/isotope/llm_live_smoke.py")
+
+    assert result.startswith("read_file note: path not found")
+    assert "Close matches:" in result
+    assert "src/isotope/demo/live_smoke/llm_live_smoke.py" in result
+    assert github.requests == [("tree", "", "abc123")]
+
+
+def test_read_file_unknown_file_id_lists_available_file_ids() -> None:
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        file_ids={"F1": "src/app.py"},
+    )
+
+    result = toolbox.read_file(file_id="F9")
+
+    assert result.startswith("read_file note: unknown file_id F9")
+    assert "F1=src/app.py" in result
+
+
 def test_read_file_defaults_to_1000_lines_and_flags_large_files() -> None:
     github = FakeGitHub(
         files={

@@ -161,10 +161,12 @@ Review-relevant files are no longer trimmed by count. The prompt skips obvious l
 such as lockfiles, generated bundles, binary assets, and archives; long hunks are still trimmed.
 Skipped files are listed in the final report.
 
-Diff hunks are indexed with changed line ranges. `read_file` and `grep_code` return line-numbered
-code context, and `web_search` returns stable IDs such as `[W1]` with the result URL and snippet.
-The model is prompted to copy those references into `evidence` objects on risks or suggestions;
-the TUI and Markdown export render that evidence under the corresponding review item.
+Diff hunks are indexed with changed line ranges. Changed files also get short IDs such as `F1`,
+so the model can call `read_file(file_id="F1")` instead of copying long repository paths.
+`read_file` and `grep_code` return line-numbered code context, and `web_search` returns stable IDs
+such as `[W1]` with the result URL and snippet. The model is prompted to copy those references into
+`evidence` objects on risks or suggestions; the TUI and Markdown export render that evidence under
+the corresponding review item.
 
 When a real model is configured, the LangGraph agent can request extra context with:
 

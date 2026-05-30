@@ -185,8 +185,10 @@ def _review_system_message(language: str) -> str:
         "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
         "Risk items must include severity, title, explanation, files, and evidence. "
         "Suggestion items must include type, text, related_file, confidence, and evidence. "
-        "Use evidence objects with kind, path, line_start, line_end, url, title, snippet, and label. "
+        "Use evidence objects with kind, file_id, path, line_start, line_end, url, title, snippet, and label. "
+        "Prefer file_id values from the changed file index when citing or reading changed files. "
         "Use read_file and grep_code line numbers as code evidence. "
+        "Do not include snippets for code evidence; line numbers are the source of truth. "
         "Use web_search result ids like W1 plus the result URL as web evidence for external facts. "
         f"{prompt_language_instruction(language)}"
     )
@@ -472,6 +474,7 @@ def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
         line_start, line_end = line_end, line_start
     return EvidenceReference(
         kind=kind,
+        file_id=_clean_text(item.get("file_id") or item.get("fileId")),
         label=_clean_text(item.get("label") or item.get("id") or item.get("source_id")),
         path=path,
         line_start=line_start,

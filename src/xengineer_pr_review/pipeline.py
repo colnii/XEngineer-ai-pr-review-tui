@@ -64,7 +64,7 @@ class ReviewPipeline:
         findings = analyze_rules(files)
         context = build_llm_context(pr, findings)
         try:
-            llm_result = self._analyze_with_optional_tools(context.prompt, pr)
+            llm_result = self._analyze_with_optional_tools(context.prompt, pr, context.file_ids)
             summary = llm_result.summary
             findings = [*findings, *llm_result.risks]
             suggestions = llm_result.suggestions
@@ -80,7 +80,7 @@ class ReviewPipeline:
             ai_notes = ""
             raw_ai_output = ""
 
-        _enrich_review_item_evidence(findings, suggestions, pr)
+        _enrich_review_item_evidence(findings, suggestions, pr, context.file_ids)
         return ReviewReport(
             pr_title=pr.title,
             pr_url=pr_url,
@@ -104,7 +104,12 @@ class ReviewPipeline:
         ref = parse_pr_url(pr_url)
         return self.github.post_pr_comment(ref, body)
 
-    def _analyze_with_optional_tools(self, prompt: str, pr: PullRequestData):
+    def _analyze_with_optional_tools(
+        self,
+        prompt: str,
+        pr: PullRequestData,
+        file_ids: dict[str, str],
+    ):
         if not getattr(self.llm, "supports_review_tools", False):
             return self.llm.analyze(prompt)
         if not _github_supports_read_tools(self.github):
@@ -115,6 +120,7 @@ class ReviewPipeline:
             ref=pr.ref,
             git_ref=pr.head_sha or pr.head_branch,
             web_searcher=default_web_searcher(),
+            file_ids=file_ids,
         )
         result = self.llm.analyze(prompt, toolbox=toolbox)
         _hydrate_web_evidence(result.risks, result.suggestions, toolbox.web_sources)
@@ -129,10 +135,12 @@ def _enrich_review_item_evidence(
     findings: list[ReviewFinding],
     suggestions: list[ReviewSuggestion],
     pr: PullRequestData,
+    file_ids: dict[str, str],
 ) -> None:
     files_by_path = {file.path: file for file in pr.files}
     for item in [*findings, *suggestions]:
-        _hydrate_code_evidence_urls(item.evidence, pr)
+        item.files = [_normalize_file_reference(path, file_ids) for path in item.files]
+        _hydrate_code_evidence_urls(item.evidence, pr, file_ids)
         for path in item.files:
             if not _has_code_evidence_for_path(item.evidence, path):
                 item.evidence.extend(_code_evidence_for_path(path, files_by_path, pr))
@@ -170,18 +178,51 @@ def _hydrate_web_evidence(
         item.evidence = hydrated
 
 
-def _hydrate_code_evidence_urls(evidence: list[EvidenceReference], pr: PullRequestData) -> None:
+def _hydrate_code_evidence_urls(
+    evidence: list[EvidenceReference],
+    pr: PullRequestData,
+    file_ids: dict[str, str],
+) -> None:
     hydrated: list[EvidenceReference] = []
     for reference in evidence:
-        if reference.kind != "code" or reference.url or not reference.path:
+        if reference.kind != "code":
             hydrated.append(reference)
+            continue
+        file_id = reference.file_id
+        path = reference.path
+        if path in file_ids:
+            file_id = file_id or path
+            path = file_ids[path]
+        elif not path and file_id:
+            path = file_ids.get(file_id, "")
+        if not path:
+            hydrated.append(_without_code_snippet(reference))
+            continue
+        if reference.url and reference.path and reference.path not in file_ids:
+            hydrated.append(_without_code_snippet(reference))
             continue
         hydrated.append(
             reference.model_copy(
-                update={"url": _github_blob_url(pr, reference.path, reference.line_start, reference.line_end)}
+                update={
+                    "file_id": file_id,
+                    "path": path,
+                    "url": reference.url
+                    or _github_blob_url(pr, path, reference.line_start, reference.line_end),
+                    "snippet": "",
+                }
             )
         )
     evidence[:] = hydrated
+
+
+def _without_code_snippet(reference: EvidenceReference) -> EvidenceReference:
+    if not reference.snippet:
+        return reference
+    return reference.model_copy(update={"snippet": ""})
+
+
+def _normalize_file_reference(path: str, file_ids: dict[str, str]) -> str:
+    return file_ids.get(path, path)
 
 
 def _has_code_evidence_for_path(evidence: list[EvidenceReference], path: str) -> bool:
