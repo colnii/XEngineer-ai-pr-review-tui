@@ -103,6 +103,45 @@ def test_grep_code_reuses_tree_listing_for_repeated_searches() -> None:
     assert [request for request in github.requests if request[0] == "tree"] == [
         ("tree", "", "abc123")
     ]
+    assert [request for request in github.requests if request[0] == "read"] == [
+        ("read", "src/app.py", "abc123"),
+        ("read", "tests/test_app.py", "abc123"),
+    ]
+
+
+def test_grep_code_path_glob_can_search_low_signal_files() -> None:
+    github = FakeGitHub(
+        files={
+            "src/app.py": "target = False\n",
+            "package-lock.json": '"target": "included when explicit"\n',
+        },
+        tree_paths=["src/app.py", "package-lock.json"],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    result = toolbox.grep_code("target", path_glob="package-lock.json")
+
+    assert "package-lock.json:1:" in result
+    assert "src/app.py" not in result
+
+
+def test_grep_code_reports_when_file_search_budget_is_exhausted() -> None:
+    files = {f"src/file_{index}.py": "nothing here\n" for index in range(45)}
+    github = FakeGitHub(files=files, tree_paths=list(files))
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    result = toolbox.grep_code("target")
+
+    assert "file search budget exhausted" in result
+    assert len([request for request in github.requests if request[0] == "read"]) == 40
 
 
 def test_web_search_reports_unavailable_when_not_configured() -> None:
@@ -133,6 +172,20 @@ def test_web_search_formats_configured_results() -> None:
     assert web_search.calls == [("python security advisory", 1)]
 
 
+def test_web_search_redacts_provider_errors() -> None:
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        web_searcher=FailingWebSearch(),
+    )
+
+    result = toolbox.web_search("python security advisory")
+
+    assert result == "web_search error: search request failed."
+    assert "secret-token" not in result
+
+
 class FakeGitHub:
     def __init__(self, files: dict[str, str], tree_paths: list[str]) -> None:
         self.files = files
@@ -161,3 +214,8 @@ class FakeWebSearch:
                 "content": "A short result snippet.",
             }
         ]
+
+
+class FailingWebSearch:
+    def search(self, query: str, max_results: int) -> list[dict[str, str]]:
+        raise RuntimeError("provider rejected secret-token")

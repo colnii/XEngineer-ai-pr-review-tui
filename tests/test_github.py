@@ -241,6 +241,25 @@ def test_fetch_file_text_accepts_base64_whitespace(monkeypatch) -> None:
     assert text == "print('hello')\n"
 
 
+def test_fetch_file_text_rejects_oversized_content(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "none",
+                "content": "",
+                "size": 1_000_001,
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="larger than supported limit"):
+        client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/large.py", "abc123")
+
+
 def test_fetch_tree_paths_returns_blob_paths_at_requested_ref(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
 

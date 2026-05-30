@@ -1,6 +1,9 @@
-from types import SimpleNamespace
-
-from xengineer_pr_review.llm import DeepSeekLLMClient, MockLLMClient, parse_llm_output
+from xengineer_pr_review import llm as llm_module
+from xengineer_pr_review.llm import (
+    MockLLMClient,
+    build_review_system_message,
+    parse_llm_output,
+)
 
 
 def test_mock_llm_returns_structured_sections() -> None:
@@ -17,39 +20,17 @@ def test_mock_llm_can_return_english_output() -> None:
     assert result.summary.startswith("Mock summary")
 
 
-def test_openai_prompt_uses_selected_language_instruction() -> None:
-    prompt = MockOpenAILLMClient(language="zh").build_input("PR title: demo")
+def test_review_prompt_uses_selected_language_instruction() -> None:
+    prompt = build_review_system_message("zh")
 
     assert "请使用中文" in prompt
     assert "JSON key" in prompt
     assert "summary" in prompt
 
 
-def test_deepseek_client_uses_openai_compatible_chat_completions() -> None:
-    fake_completions = FakeChatCompletions(
-        '{"summary": "DeepSeek reviewed the PR.", "risks": [], "suggestions": []}'
-    )
-    client = DeepSeekLLMClient.__new__(DeepSeekLLMClient)
-    client.model = "deepseek-v4-flash"
-    client.language = "zh"
-    client.client = SimpleNamespace(chat=SimpleNamespace(completions=fake_completions))
-
-    result = client.analyze("PR title: demo")
-
-    assert result.summary == "DeepSeek reviewed the PR."
-    assert fake_completions.calls == [
-        {
-            "model": "deepseek-v4-flash",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": client._build_system_message(),
-                },
-                {"role": "user", "content": "PR title: demo"},
-            ],
-            "stream": False,
-        }
-    ]
+def test_llm_module_does_not_keep_legacy_provider_clients() -> None:
+    assert not hasattr(llm_module, "OpenAILLMClient")
+    assert not hasattr(llm_module, "DeepSeekLLMClient")
 
 
 def test_parse_llm_json_output() -> None:
@@ -175,24 +156,3 @@ def test_parse_llm_unstructured_output_falls_back_to_raw_output() -> None:
     assert result.raw_output == "Looks okay overall, but I would inspect the tests manually."
     assert result.warnings == ["LLM output could not be parsed into structured sections."]
 
-
-class MockOpenAILLMClient:
-    def __init__(self, language: str) -> None:
-        from xengineer_pr_review.llm import OpenAILLMClient
-
-        self.client = OpenAILLMClient.__new__(OpenAILLMClient)
-        self.client.language = language
-
-    def build_input(self, prompt: str) -> str:
-        return self.client._build_input(prompt)
-
-
-class FakeChatCompletions:
-    def __init__(self, content: str) -> None:
-        self.content = content
-        self.calls: list[dict[str, object]] = []
-
-    def create(self, **kwargs: object) -> SimpleNamespace:
-        self.calls.append(kwargs)
-        message = SimpleNamespace(content=self.content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])

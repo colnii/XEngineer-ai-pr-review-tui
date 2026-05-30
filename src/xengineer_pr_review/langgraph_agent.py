@@ -257,7 +257,7 @@ def _tool_schemas(web_search_enabled: bool) -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "read_file",
-                "description": "Read a repository file from the pull request head commit.",
+                "description": "Read up to 1000 lines from a repository file at the pull request head commit.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -273,7 +273,11 @@ def _tool_schemas(web_search_enabled: bool) -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "grep_code",
-                "description": "Search repository files at the pull request head commit.",
+                "description": (
+                    "Search up to 40 repository files at the pull request head commit. "
+                    "Without path_glob, low-signal generated/binary/lock files are skipped; "
+                    "with path_glob, matching paths are searched explicitly."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {

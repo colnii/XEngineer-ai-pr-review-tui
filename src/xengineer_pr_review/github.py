@@ -13,6 +13,9 @@ from xengineer_pr_review.diff_parser import parse_unified_diff
 from xengineer_pr_review.models import PostedComment, PullRequestData, PullRequestRef
 
 
+MAX_FILE_CONTENT_BYTES = 1_000_000
+
+
 class GitHubClient:
     def __init__(self, timeout: float = 20.0, transport: httpx.BaseTransport | None = None) -> None:
         headers = {"User-Agent": "xengineer-pr-review"}
@@ -61,6 +64,12 @@ class GitHubClient:
         response = self.client.get(api_url, params={"ref": git_ref})
         response.raise_for_status()
         payload = response.json()
+        content_size = _payload_int(payload.get("size"))
+        if content_size > MAX_FILE_CONTENT_BYTES:
+            raise ValueError(
+                f"GitHub content for {path} is larger than supported limit "
+                f"({MAX_FILE_CONTENT_BYTES} bytes)."
+            )
         if payload.get("encoding") != "base64":
             raise ValueError(f"GitHub content for {path} is not base64 encoded.")
         raw_content = re.sub(r"\s+", "", str(payload.get("content", "")))
@@ -106,3 +115,10 @@ def _resolve_github_token() -> str | None:
 
     token = result.stdout.strip()
     return token or None
+
+
+def _payload_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0

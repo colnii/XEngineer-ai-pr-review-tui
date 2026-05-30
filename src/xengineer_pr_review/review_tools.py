@@ -13,7 +13,7 @@ from xengineer_pr_review.models import PullRequestRef
 
 
 MAX_READ_LINES = 1000
-MAX_GREP_FILES = 80
+MAX_GREP_FILES = 40
 MAX_GREP_RESULTS = 20
 
 
@@ -33,6 +33,7 @@ class ReviewToolbox:
     git_ref: str
     web_searcher: WebSearchLike | None = None
     _tree_paths_cache: list[str] | None = field(default=None, init=False, repr=False)
+    _file_text_cache: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     def read_file(self, path: str, max_lines: int = MAX_READ_LINES) -> str:
         try:
@@ -43,7 +44,7 @@ class ReviewToolbox:
                 minimum=1,
                 maximum=MAX_READ_LINES,
             )
-            text = self.github.fetch_file_text(self.ref, path, self.git_ref)
+            text = self._fetch_file_text(path)
         except Exception as exc:
             return f"read_file error for {path}: {exc}"
 
@@ -81,13 +82,11 @@ class ReviewToolbox:
             return f"grep_code error: could not list repository tree: {exc}"
 
         matches: list[str] = []
-        searched_files = 0
-        for path in _filter_search_paths(paths, path_glob):
-            if searched_files >= MAX_GREP_FILES:
-                break
-            searched_files += 1
+        search_paths = _filter_search_paths(paths, path_glob)
+        budget_exhausted = len(search_paths) > MAX_GREP_FILES
+        for path in search_paths[:MAX_GREP_FILES]:
             try:
-                text = self.github.fetch_file_text(self.ref, path, self.git_ref)
+                text = self._fetch_file_text(path)
             except Exception:
                 continue
             for line_number, line in enumerate(text.splitlines(), start=1):
@@ -99,7 +98,12 @@ class ReviewToolbox:
                         )
 
         if not matches:
-            return f"grep_code found no matches for pattern: {pattern}"
+            lines = [f"grep_code found no matches for pattern: {pattern}"]
+            if budget_exhausted:
+                lines.append(f"[stopped after {MAX_GREP_FILES} files; file search budget exhausted]")
+            return "\n".join(lines)
+        if budget_exhausted:
+            matches.append(f"[stopped after {MAX_GREP_FILES} files; file search budget exhausted]")
         return "\n".join(matches)
 
     def web_search(self, query: str, max_results: int = 3) -> str:
@@ -108,8 +112,8 @@ class ReviewToolbox:
         max_results = _bounded_int(max_results, default=3, minimum=1, maximum=5)
         try:
             results = self.web_searcher.search(query, max_results)
-        except Exception as exc:
-            return f"web_search error: {exc}"
+        except Exception:
+            return "web_search error: search request failed."
         if not results:
             return f"web_search found no results for query: {query}"
         lines = [f"Web search results for: {query}"]
@@ -124,6 +128,15 @@ class ReviewToolbox:
         if self._tree_paths_cache is None:
             self._tree_paths_cache = self.github.fetch_tree_paths(self.ref, self.git_ref)
         return self._tree_paths_cache
+
+    def _fetch_file_text(self, path: str) -> str:
+        if path not in self._file_text_cache:
+            self._file_text_cache[path] = self.github.fetch_file_text(
+                self.ref,
+                path,
+                self.git_ref,
+            )
+        return self._file_text_cache[path]
 
 
 class TavilyWebSearchClient:
@@ -165,7 +178,7 @@ def _filter_search_paths(paths: list[str], path_glob: str | None) -> list[str]:
     for path in paths:
         if path_glob and not fnmatch(path, path_glob):
             continue
-        if not has_review_signal(path):
+        if not path_glob and not has_review_signal(path):
             continue
         selected.append(path)
     return selected
