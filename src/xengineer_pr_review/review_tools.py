@@ -15,6 +15,7 @@ from xengineer_pr_review.models import PullRequestRef
 MAX_READ_LINES = 1000
 MAX_GREP_FILES = 40
 MAX_GREP_RESULTS = 20
+MAX_CACHED_FILES = 40
 
 
 class GitHubReadLike(Protocol):
@@ -82,12 +83,14 @@ class ReviewToolbox:
             return f"grep_code error: could not list repository tree: {exc}"
 
         matches: list[str] = []
+        skipped_files = 0
         search_paths = _filter_search_paths(paths, path_glob)
         budget_exhausted = len(search_paths) > MAX_GREP_FILES
         for path in search_paths[:MAX_GREP_FILES]:
             try:
                 text = self._fetch_file_text(path)
             except Exception:
+                skipped_files += 1
                 continue
             for line_number, line in enumerate(text.splitlines(), start=1):
                 if compiled.search(line):
@@ -101,9 +104,13 @@ class ReviewToolbox:
             lines = [f"grep_code found no matches for pattern: {pattern}"]
             if budget_exhausted:
                 lines.append(f"[stopped after {MAX_GREP_FILES} files; file search budget exhausted]")
+            if skipped_files:
+                lines.append(_skipped_files_message(skipped_files))
             return "\n".join(lines)
         if budget_exhausted:
             matches.append(f"[stopped after {MAX_GREP_FILES} files; file search budget exhausted]")
+        if skipped_files:
+            matches.append(_skipped_files_message(skipped_files))
         return "\n".join(matches)
 
     def web_search(self, query: str, max_results: int = 3) -> str:
@@ -131,6 +138,8 @@ class ReviewToolbox:
 
     def _fetch_file_text(self, path: str) -> str:
         if path not in self._file_text_cache:
+            if len(self._file_text_cache) >= MAX_CACHED_FILES:
+                self._file_text_cache.pop(next(iter(self._file_text_cache)))
             self._file_text_cache[path] = self.github.fetch_file_text(
                 self.ref,
                 path,
@@ -186,7 +195,12 @@ def _filter_search_paths(paths: list[str], path_glob: str | None) -> list[str]:
 
 def _validate_relative_path(path: str) -> str:
     normalized = path.replace("\\", "/").strip()
-    if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
+    if (
+        not normalized
+        or normalized.startswith("/")
+        or ".." in normalized.split("/")
+        or any(ord(character) < 32 for character in normalized)
+    ):
         raise ValueError("path must be a repository-relative file path")
     return normalized
 
@@ -197,3 +211,8 @@ def _bounded_int(value: int, default: int, minimum: int, maximum: int) -> int:
     except (TypeError, ValueError):
         return default
     return max(minimum, min(maximum, parsed))
+
+
+def _skipped_files_message(count: int) -> str:
+    noun = "file" if count == 1 else "files"
+    return f"[skipped {count} unreadable {noun}]"

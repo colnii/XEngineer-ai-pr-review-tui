@@ -70,6 +70,9 @@ class GitHubClient:
                 f"GitHub content for {path} is larger than supported limit "
                 f"({MAX_FILE_CONTENT_BYTES} bytes)."
             )
+        payload_type = payload.get("type")
+        if payload_type and payload_type != "file":
+            raise ValueError(f"GitHub content for {path} is not a regular file.")
         if payload.get("encoding") != "base64":
             raise ValueError(f"GitHub content for {path} is not base64 encoded.")
         raw_content = re.sub(r"\s+", "", str(payload.get("content", "")))

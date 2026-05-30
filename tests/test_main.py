@@ -38,6 +38,17 @@ def test_build_pipeline_uses_langgraph_deepseek_when_deepseek_key_is_configured(
     assert pipeline.llm.model == "deepseek-v4-pro"
 
 
+def test_build_pipeline_passes_max_tool_rounds_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-key")
+    monkeypatch.setenv("XENGINEER_MAX_TOOL_ROUNDS", "12")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    pipeline = build_pipeline(language="zh")
+
+    assert isinstance(pipeline.llm, LangGraphReviewClient)
+    assert pipeline.llm.max_tool_rounds == 12
+
+
 def test_build_pipeline_uses_langgraph_openai_when_openai_key_is_configured(monkeypatch) -> None:
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")

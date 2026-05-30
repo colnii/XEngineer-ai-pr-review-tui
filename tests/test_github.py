@@ -260,6 +260,26 @@ def test_fetch_file_text_rejects_oversized_content(monkeypatch) -> None:
         client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/large.py", "abc123")
 
 
+def test_fetch_file_text_rejects_non_file_content(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "type": "submodule",
+                "size": 0,
+                "encoding": "none",
+                "content": "",
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="is not a regular file"):
+        client.fetch_file_text(PullRequestRef("owner", "repo", 1), "vendor/lib", "abc123")
+
+
 def test_fetch_tree_paths_returns_blob_paths_at_requested_ref(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
 

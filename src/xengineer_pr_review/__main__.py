@@ -37,16 +37,29 @@ def build_pipeline(
             language=language,
             api_key=os.environ.get("DEEPSEEK_API_KEY"),
             base_url=os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL,
+            max_tool_rounds=_max_tool_rounds_from_env(),
         )
     elif os.environ.get("OPENAI_API_KEY"):
         llm = LangGraphReviewClient(
             model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
             language=language,
             api_key=os.environ.get("OPENAI_API_KEY"),
+            max_tool_rounds=_max_tool_rounds_from_env(),
         )
     else:
         llm = MockLLMClient(language=language)
     return ReviewPipeline(github=GitHubClient(), llm=llm)
+
+
+def _max_tool_rounds_from_env() -> int:
+    raw_value = os.environ.get("XENGINEER_MAX_TOOL_ROUNDS")
+    if raw_value is None:
+        return 10
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return 10
+    return max(1, parsed)
 
 
 def publish_review_comment(pipeline: ReviewPipeline, pr_url: str, language: str) -> str:

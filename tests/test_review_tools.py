@@ -1,5 +1,5 @@
 from xengineer_pr_review.models import PullRequestRef
-from xengineer_pr_review.review_tools import ReviewToolbox
+from xengineer_pr_review.review_tools import MAX_CACHED_FILES, ReviewToolbox
 
 
 def test_read_file_returns_bounded_numbered_content() -> None:
@@ -58,6 +58,18 @@ def test_read_file_returns_error_for_unsafe_path() -> None:
     assert result.startswith("read_file error")
 
 
+def test_read_file_returns_error_for_control_character_path() -> None:
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    result = toolbox.read_file("src/\x00app.py")
+
+    assert result.startswith("read_file error")
+
+
 def test_grep_code_searches_review_relevant_files_with_limits() -> None:
     github = FakeGitHub(
         files={
@@ -109,6 +121,22 @@ def test_grep_code_reuses_tree_listing_for_repeated_searches() -> None:
     ]
 
 
+def test_read_file_keeps_bounded_file_cache() -> None:
+    files = {f"src/file_{index}.py": f"line {index}\n" for index in range(MAX_CACHED_FILES + 1)}
+    github = FakeGitHub(files=files, tree_paths=list(files))
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    for path in files:
+        toolbox.read_file(path)
+
+    assert len(toolbox._file_text_cache) == MAX_CACHED_FILES
+    assert "src/file_0.py" not in toolbox._file_text_cache
+
+
 def test_grep_code_path_glob_can_search_low_signal_files() -> None:
     github = FakeGitHub(
         files={
@@ -142,6 +170,23 @@ def test_grep_code_reports_when_file_search_budget_is_exhausted() -> None:
 
     assert "file search budget exhausted" in result
     assert len([request for request in github.requests if request[0] == "read"]) == 40
+
+
+def test_grep_code_reports_skipped_unreadable_files() -> None:
+    github = FakeGitHub(
+        files={"src/app.py": "target = True\n"},
+        tree_paths=["src/app.py", "src/missing.py"],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    result = toolbox.grep_code("target")
+
+    assert "src/app.py:1: target = True" in result
+    assert "skipped 1 unreadable file" in result
 
 
 def test_web_search_reports_unavailable_when_not_configured() -> None:
