@@ -1,6 +1,11 @@
-from types import SimpleNamespace
-
-from xengineer_pr_review.llm import DeepSeekLLMClient, MockLLMClient, parse_llm_output
+from xengineer_pr_review import llm as llm_module
+from xengineer_pr_review.llm import (
+    DeepSeekLLMClient,
+    MockLLMClient,
+    OpenAILLMClient,
+    build_review_system_message,
+    parse_llm_output,
+)
 
 
 def test_mock_llm_returns_structured_sections() -> None:
@@ -17,38 +22,96 @@ def test_mock_llm_can_return_english_output() -> None:
     assert result.summary.startswith("Mock summary")
 
 
-def test_openai_prompt_uses_selected_language_instruction() -> None:
-    prompt = MockOpenAILLMClient(language="zh").build_input("PR title: demo")
+def test_mock_llm_declares_tools_not_supported() -> None:
+    assert MockLLMClient.supports_review_tools is False
+
+
+def test_review_prompt_uses_selected_language_instruction() -> None:
+    prompt = build_review_system_message("zh")
 
     assert "请使用中文" in prompt
     assert "JSON key" in prompt
     assert "summary" in prompt
 
 
-def test_deepseek_client_uses_openai_compatible_chat_completions() -> None:
-    fake_completions = FakeChatCompletions(
-        '{"summary": "DeepSeek reviewed the PR.", "risks": [], "suggestions": []}'
-    )
-    client = DeepSeekLLMClient.__new__(DeepSeekLLMClient)
-    client.model = "deepseek-v4-flash"
-    client.language = "zh"
-    client.client = SimpleNamespace(chat=SimpleNamespace(completions=fake_completions))
+def test_legacy_openai_client_wraps_langgraph_client(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    calls: list[tuple[str, object]] = []
 
+    class FakeLangGraphReviewClient:
+        supports_review_tools = True
+
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(("init", kwargs))
+
+        def analyze(self, prompt: str, toolbox=None):
+            calls.append(("analyze", (prompt, toolbox)))
+            return parse_llm_output(
+                '{"summary": "Wrapped OpenAI.", "risks": [], "suggestions": []}'
+            )
+
+    monkeypatch.setattr(llm_module, "_langgraph_review_client", lambda: FakeLangGraphReviewClient)
+
+    toolbox = object()
+    client = OpenAILLMClient(
+        model="gpt-test",
+        language="en",
+        base_url="https://openai-compatible.example",
+    )
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Wrapped OpenAI."
+    assert calls == [
+        (
+            "init",
+            {
+                "model": "gpt-test",
+                "language": "en",
+                "api_key": None,
+                "base_url": "https://openai-compatible.example",
+            },
+        ),
+        ("analyze", ("PR title: demo", toolbox)),
+    ]
+
+
+def test_legacy_deepseek_client_wraps_langgraph_client(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+
+    class FakeLangGraphReviewClient:
+        supports_review_tools = True
+
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(("init", kwargs))
+
+        def analyze(self, prompt: str, toolbox=None):
+            calls.append(("analyze", (prompt, toolbox)))
+            return parse_llm_output(
+                '{"summary": "Wrapped DeepSeek.", "risks": [], "suggestions": []}'
+            )
+
+    monkeypatch.setattr(llm_module, "_langgraph_review_client", lambda: FakeLangGraphReviewClient)
+
+    client = DeepSeekLLMClient(
+        model="deepseek-test",
+        language="zh",
+        api_key="deepseek-key",
+        base_url="https://deepseek.example",
+    )
     result = client.analyze("PR title: demo")
 
-    assert result.summary == "DeepSeek reviewed the PR."
-    assert fake_completions.calls == [
-        {
-            "model": "deepseek-v4-flash",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": client._build_system_message(),
-                },
-                {"role": "user", "content": "PR title: demo"},
-            ],
-            "stream": False,
-        }
+    assert result.summary == "Wrapped DeepSeek."
+    assert calls == [
+        (
+            "init",
+            {
+                "model": "deepseek-test",
+                "language": "zh",
+                "api_key": "deepseek-key",
+                "base_url": "https://deepseek.example",
+            },
+        ),
+        ("analyze", ("PR title: demo", None)),
     ]
 
 
@@ -84,6 +147,36 @@ def test_parse_llm_json_output() -> None:
     assert result.suggestions[0].suggestion_type == "test"
     assert result.suggestions[0].files == ["tests/test_requests.py"]
     assert result.notes == "Assumes urllib3 behavior is unchanged."
+    assert result.warnings == []
+
+
+def test_parse_llm_json_output_embedded_in_markdown_fence() -> None:
+    result = parse_llm_output(
+        """
+        I now have enough context to write the final review.
+
+        ```json
+        {
+          "summary": "The PR adds repository read tools.",
+          "risks": [
+            {
+              "severity": "low",
+              "title": "API budget",
+              "explanation": "Repeated grep calls can spend API budget.",
+              "files": ["src/xengineer_pr_review/review_tools.py"]
+            }
+          ],
+          "suggestions": [],
+          "notes": "The JSON was wrapped in a code fence."
+        }
+        ```
+        """
+    )
+
+    assert result.summary == "The PR adds repository read tools."
+    assert result.risks[0].title == "API budget"
+    assert result.risks[0].files == ["src/xengineer_pr_review/review_tools.py"]
+    assert result.notes == "The JSON was wrapped in a code fence."
     assert result.warnings == []
 
 
@@ -144,25 +237,3 @@ def test_parse_llm_unstructured_output_falls_back_to_raw_output() -> None:
     assert result.summary == "AI review returned unstructured notes."
     assert result.raw_output == "Looks okay overall, but I would inspect the tests manually."
     assert result.warnings == ["LLM output could not be parsed into structured sections."]
-
-
-class MockOpenAILLMClient:
-    def __init__(self, language: str) -> None:
-        from xengineer_pr_review.llm import OpenAILLMClient
-
-        self.client = OpenAILLMClient.__new__(OpenAILLMClient)
-        self.client.language = language
-
-    def build_input(self, prompt: str) -> str:
-        return self.client._build_input(prompt)
-
-
-class FakeChatCompletions:
-    def __init__(self, content: str) -> None:
-        self.content = content
-        self.calls: list[dict[str, object]] = []
-
-    def create(self, **kwargs: object) -> SimpleNamespace:
-        self.calls.append(kwargs)
-        message = SimpleNamespace(content=self.content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])

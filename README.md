@@ -70,6 +70,18 @@ export DEEPSEEK_MODEL="deepseek-v4-pro"
 xpr-review
 ```
 
+Real model mode uses a LangGraph-backed review agent. During the LLM review step, the model
+may call bounded read-only tools to inspect files at the PR head commit or grep repository code
+before returning the final structured report. The normal stop condition is the model returning a
+final report without more tool calls; hard limits or tool errors are surfaced in report warnings.
+
+Optional web search can be enabled with Tavily:
+
+```bash
+export TAVILY_API_KEY="..."
+xpr-review
+```
+
 If GitHub anonymous API requests are rate limited, or you need to review a private
 repository PR, provide a GitHub token:
 
@@ -107,7 +119,7 @@ https://github.com/Textualize/textual/pull/1
 
 - TUI: terminal input, progress, display, export.
 - Review Core: PR URL parsing, diff parsing, rule analysis, context trimming, report aggregation.
-- Adapters: GitHub HTTP client, LLM client, Markdown exporter.
+- Adapters: GitHub HTTP client, LangGraph LLM agent, Markdown exporter.
 
 ## Model Choice
 
@@ -126,6 +138,12 @@ Review-relevant files are no longer trimmed by count. The prompt skips obvious l
 such as lockfiles, generated bundles, binary assets, and archives; long hunks are still trimmed.
 Skipped files are listed in the final report.
 
+When a real model is configured, the LangGraph agent can request extra context with:
+
+- `read_file`: read a repository-relative file from the PR head commit.
+- `grep_code`: search review-relevant repository files at the PR head commit.
+- `web_search`: search public web context only when `TAVILY_API_KEY` is configured.
+
 ## Limitations
 
 - Private repository PRs require a local token with read access; GitHub may return
@@ -134,6 +152,7 @@ Skipped files are listed in the final report.
   publishing a top-level conversation comment.
 - Inline review comments and approve/request-changes review states are not implemented.
 - No repository-wide semantic indexing.
+- Tool calls are bounded; if the model hits a tool limit or a tool fails, the report includes a warning.
 
 ## Future Work
 

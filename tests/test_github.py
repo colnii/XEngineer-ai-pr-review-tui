@@ -1,6 +1,8 @@
+import base64
 import json
 
 import httpx
+import pytest
 
 import xengineer_pr_review.github as github_module
 from xengineer_pr_review.github import GitHubClient
@@ -12,7 +14,7 @@ PULL_PAYLOAD = {
     "title": "Demo PR",
     "user": {"login": "alice"},
     "base": {"ref": "main"},
-    "head": {"ref": "feature"},
+    "head": {"ref": "feature", "sha": "abc123"},
 }
 DIFF_TEXT = """diff --git a/src/app.py b/src/app.py
 --- a/src/app.py
@@ -103,6 +105,7 @@ def test_fetch_pr_uses_authenticated_pull_api_for_diff(monkeypatch) -> None:
     pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
 
     assert pr.title == "Demo PR"
+    assert pr.head_sha == "abc123"
     assert [file.path for file in pr.files] == ["src/app.py"]
     assert requests == [
         (
@@ -169,6 +172,158 @@ def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
             {"body": "# Report"},
         )
     ]
+
+
+def test_fetch_file_text_reads_content_at_requested_ref(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    seen_requests: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append((str(request.url), request.headers.get("authorization")))
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "base64",
+                "content": base64.b64encode(b"print('hello')\n").decode(),
+                "size": 15,
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    text = client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/app.py", "abc123")
+
+    assert text == "print('hello')\n"
+    assert seen_requests == [
+        (
+            "https://api.github.com/repos/owner/repo/contents/src/app.py?ref=abc123",
+            "Bearer read-token",
+        )
+    ]
+
+
+def test_fetch_file_text_rejects_invalid_base64(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "base64",
+                "content": "@@@not-base64@@@",
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="not valid UTF-8 base64"):
+        client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/app.py", "abc123")
+
+
+def test_fetch_file_text_accepts_base64_whitespace(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    encoded = base64.b64encode(b"print('hello')\n").decode()
+    wrapped = f" {encoded[:5]}\r\n\t{encoded[5:]} "
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "base64",
+                "content": wrapped,
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    text = client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/app.py", "abc123")
+
+    assert text == "print('hello')\n"
+
+
+def test_fetch_file_text_rejects_oversized_content(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "none",
+                "content": "",
+                "size": 1_000_001,
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="larger than supported limit"):
+        client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/large.py", "abc123")
+
+
+def test_fetch_file_text_rejects_non_file_content(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "type": "submodule",
+                "size": 0,
+                "encoding": "none",
+                "content": "",
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="is not a regular file"):
+        client.fetch_file_text(PullRequestRef("owner", "repo", 1), "vendor/lib", "abc123")
+
+
+def test_fetch_tree_paths_returns_blob_paths_at_requested_ref(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == (
+            "https://api.github.com/repos/owner/repo/git/trees/abc123?recursive=1"
+        )
+        assert request.headers.get("authorization") == "Bearer read-token"
+        return httpx.Response(
+            200,
+            json={
+                "tree": [
+                    {"type": "blob", "path": "src/app.py"},
+                    {"type": "tree", "path": "src"},
+                    {"type": "blob", "path": "README.md"},
+                ]
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    paths = client.fetch_tree_paths(PullRequestRef("owner", "repo", 1), "abc123")
+
+    assert paths == ["src/app.py", "README.md"]
+
+
+def test_fetch_tree_paths_rejects_truncated_recursive_tree(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "truncated": True,
+                "tree": [
+                    {"type": "blob", "path": "src/app.py"},
+                ],
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="tree for abc123 is truncated"):
+        client.fetch_tree_paths(PullRequestRef("owner", "repo", 1), "abc123")
 
 
 def _pull_api_response(request: httpx.Request) -> httpx.Response:

@@ -7,8 +7,6 @@ from dataclasses import field
 import re
 from typing import Any
 
-from openai import OpenAI
-
 from xengineer_pr_review.locale import normalize_language, prompt_language_instruction
 from xengineer_pr_review.models import ReviewFinding, ReviewSuggestion
 
@@ -54,9 +52,10 @@ def parse_llm_output(text: str) -> LLMResult:
             raw_output=text,
         )
 
-    json_result = _parse_json_output(cleaned)
-    if json_result is not None:
-        return json_result
+    for candidate in _json_output_candidates(cleaned):
+        json_result = _parse_json_output(candidate)
+        if json_result is not None:
+            return json_result
 
     markdown_result = _parse_markdown_output(cleaned)
     if markdown_result is not None:
@@ -70,6 +69,8 @@ def parse_llm_output(text: str) -> LLMResult:
 
 
 class MockLLMClient:
+    supports_review_tools = False
+
     def __init__(self, language: str = "zh") -> None:
         self.language = normalize_language(language)
 
@@ -127,24 +128,33 @@ class MockLLMClient:
 
 
 class OpenAILLMClient:
-    def __init__(self, model: str = "gpt-4.1-mini", language: str = "zh") -> None:
-        self.model = model
-        self.language = normalize_language(language)
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    """Compatibility wrapper for callers that imported the pre-LangGraph client."""
 
-    def analyze(self, prompt: str) -> LLMResult:
-        response = self.client.responses.create(
-            model=self.model,
-            input=self._build_input(prompt),
+    supports_review_tools = True
+
+    def __init__(
+        self,
+        model: str = "gpt-4.1-mini",
+        language: str = "zh",
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        self._client = _langgraph_review_client()(
+            model=model,
+            language=language,
+            api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+            base_url=base_url,
         )
-        text = response.output_text.strip()
-        return parse_llm_output(text)
 
-    def _build_input(self, prompt: str) -> str:
-        return f"{_review_system_message(self.language)}\n\n{prompt}"
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        return self._client.analyze(prompt, toolbox=toolbox)
 
 
 class DeepSeekLLMClient:
+    """Compatibility wrapper for callers that imported the pre-LangGraph client."""
+
+    supports_review_tools = True
+
     def __init__(
         self,
         model: str | None = None,
@@ -152,27 +162,21 @@ class DeepSeekLLMClient:
         api_key: str | None = None,
         base_url: str | None = None,
     ) -> None:
-        self.model = model or os.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
-        self.language = normalize_language(language)
-        self.client = OpenAI(
+        self._client = _langgraph_review_client()(
+            model=model or os.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL,
+            language=language,
             api_key=api_key or os.environ.get("DEEPSEEK_API_KEY"),
             base_url=base_url or os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL,
         )
 
-    def analyze(self, prompt: str) -> LLMResult:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self._build_system_message()},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False,
-        )
-        text = response.choices[0].message.content or ""
-        return parse_llm_output(text.strip())
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        return self._client.analyze(prompt, toolbox=toolbox)
 
-    def _build_system_message(self) -> str:
-        return _review_system_message(self.language)
+
+def _langgraph_review_client():
+    from xengineer_pr_review.langgraph_agent import LangGraphReviewClient
+
+    return LangGraphReviewClient
 
 
 def _review_system_message(language: str) -> str:
@@ -183,6 +187,10 @@ def _review_system_message(language: str) -> str:
         "Suggestion items must include type, text, related_file, and confidence. "
         f"{prompt_language_instruction(language)}"
     )
+
+
+def build_review_system_message(language: str) -> str:
+    return _review_system_message(language)
 
 
 def _parse_json_output(text: str) -> LLMResult | None:
@@ -248,6 +256,16 @@ def _strip_outer_code_fence(text: str) -> str:
     if len(lines) < 2 or not lines[-1].strip().startswith("```"):
         return text
     return "\n".join(lines[1:-1]).strip()
+
+
+def _json_output_candidates(text: str) -> list[str]:
+    candidates = [text]
+    fence_pattern = re.compile(r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)```", re.DOTALL)
+    for match in fence_pattern.finditer(text):
+        fenced = match.group(1).strip()
+        if fenced:
+            candidates.append(fenced)
+    return candidates
 
 
 def _split_markdown_sections(text: str) -> dict[str, str]:

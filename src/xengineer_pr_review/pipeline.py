@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Protocol
+import logging
+from typing import Any, Protocol, TypeGuard
 
 from xengineer_pr_review.context import build_llm_context
 from xengineer_pr_review.diff_parser import parse_unified_diff
@@ -8,7 +9,11 @@ from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.llm import MockLLMClient
 from xengineer_pr_review.models import PullRequestData, PullRequestRef, ReviewReport
 from xengineer_pr_review.pr_url import parse_pr_url
+from xengineer_pr_review.review_tools import ReviewToolbox, default_web_searcher
 from xengineer_pr_review.rules import analyze_rules
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class GitHubLike(Protocol):
@@ -16,8 +21,15 @@ class GitHubLike(Protocol):
     def post_pr_comment(self, ref: PullRequestRef, body: str): ...
 
 
+class GitHubReadLike(GitHubLike, Protocol):
+    def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str: ...
+    def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]: ...
+
+
 class LLMLike(Protocol):
-    def analyze(self, prompt: str): ...
+    supports_review_tools: bool
+
+    def analyze(self, prompt: str, toolbox: Any | None = None): ...
 
 
 class ReviewPipeline:
@@ -37,12 +49,13 @@ class ReviewPipeline:
             head_branch=pr.head_branch,
             files=files,
             diff_text=pr.diff_text,
+            head_sha=pr.head_sha,
         )
 
         findings = analyze_rules(files)
         context = build_llm_context(pr, findings)
         try:
-            llm_result = self.llm.analyze(context.prompt)
+            llm_result = self._analyze_with_optional_tools(context.prompt, pr)
             summary = llm_result.summary
             findings = [*findings, *llm_result.risks]
             suggestions = llm_result.suggestions
@@ -80,3 +93,21 @@ class ReviewPipeline:
     def post_review_comment(self, pr_url: str, body: str):
         ref = parse_pr_url(pr_url)
         return self.github.post_pr_comment(ref, body)
+
+    def _analyze_with_optional_tools(self, prompt: str, pr: PullRequestData):
+        if not getattr(self.llm, "supports_review_tools", False):
+            return self.llm.analyze(prompt)
+        if not _github_supports_read_tools(self.github):
+            LOGGER.info("Review tools disabled: GitHub client does not support file read/search tools.")
+            return self.llm.analyze(prompt, toolbox=None)
+        toolbox = ReviewToolbox(
+            github=self.github,
+            ref=pr.ref,
+            git_ref=pr.head_sha or pr.head_branch,
+            web_searcher=default_web_searcher(),
+        )
+        return self.llm.analyze(prompt, toolbox=toolbox)
+
+
+def _github_supports_read_tools(github: GitHubLike) -> TypeGuard[GitHubReadLike]:
+    return hasattr(github, "fetch_file_text") and hasattr(github, "fetch_tree_paths")

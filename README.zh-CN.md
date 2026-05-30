@@ -64,6 +64,18 @@ export DEEPSEEK_MODEL="deepseek-v4-pro"
 xpr-review
 ```
 
+真实模型模式会使用 LangGraph（用于编排 agent 循环的库）驱动审查 agent。在 LLM 审查
+阶段，模型可以主动调用只读工具，读取 PR head commit 上的文件，或 grep（按文本/正则搜索）
+仓库代码；当模型不再请求工具并返回最终结构化报告时，审查正常结束。若因为工具轮数上限、
+工具失败等硬性因素收束，报告会在 warnings 中说明。
+
+如需启用可选 web search（联网搜索），配置 Tavily：
+
+```bash
+export TAVILY_API_KEY="..."
+xpr-review
+```
+
 如果 GitHub 匿名 API 请求被限流，或需要审查私有仓库 PR，可以提供 GitHub token：
 
 ```bash
@@ -110,7 +122,7 @@ xpr-review --language en
 
 - TUI：终端输入、进度展示、报告渲染和导出。
 - Review Core：PR URL 解析、diff 解析、规则分析、上下文裁剪、报告聚合。
-- Adapters：GitHub HTTP 客户端、LLM 客户端、Markdown 导出器。
+- Adapters：GitHub HTTP 客户端、LangGraph LLM agent、Markdown 导出器。
 
 ## 模型选择
 
@@ -128,12 +140,19 @@ xpr-review --language en
 prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 仍会裁剪。
 被跳过的文件会在最终报告中列出。
 
+配置真实模型后，LangGraph agent 可以按需请求更多上下文：
+
+- `read_file`：读取 PR head commit 上的仓库相对路径文件。
+- `grep_code`：在 PR head commit 的审查相关文件中搜索代码。
+- `web_search`：仅在配置 `TAVILY_API_KEY` 后搜索公开网页上下文。
+
 ## 限制
 
 - 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。
 - PR 评论只支持手动发布：TUI 会要求人工确认后，才发布顶层 Conversation 评论。
 - 暂不支持行内 review comment，也不支持 approve/request-changes review 状态。
 - 没有仓库级语义索引。
+- 工具调用有轮数和输出限制；如果模型触达限制或工具失败，报告会显示 warning。
 
 ## 后续方向
 

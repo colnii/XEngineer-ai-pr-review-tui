@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import os
+import re
 import subprocess
+from urllib.parse import quote
 
 import httpx
 
 from xengineer_pr_review.diff_parser import parse_unified_diff
 from xengineer_pr_review.models import PostedComment, PullRequestData, PullRequestRef
+
+
+MAX_FILE_CONTENT_BYTES = 1_000_000
 
 
 class GitHubClient:
@@ -41,6 +48,7 @@ class GitHubClient:
             head_branch=payload.get("head", {}).get("ref", "unknown"),
             files=parse_unified_diff(diff_text),
             diff_text=diff_text,
+            head_sha=payload.get("head", {}).get("sha", ""),
         )
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
@@ -49,6 +57,44 @@ class GitHubClient:
         response.raise_for_status()
         payload = response.json()
         return PostedComment(html_url=payload.get("html_url", ""))
+
+    def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str:
+        encoded_path = quote(path.strip("/"), safe="/")
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/contents/{encoded_path}"
+        response = self.client.get(api_url, params={"ref": git_ref})
+        response.raise_for_status()
+        payload = response.json()
+        content_size = _payload_int(payload.get("size"))
+        if content_size > MAX_FILE_CONTENT_BYTES:
+            raise ValueError(
+                f"GitHub content for {path} is larger than supported limit "
+                f"({MAX_FILE_CONTENT_BYTES} bytes)."
+            )
+        payload_type = payload.get("type")
+        if payload_type and payload_type != "file":
+            raise ValueError(f"GitHub content for {path} is not a regular file.")
+        if payload.get("encoding") != "base64":
+            raise ValueError(f"GitHub content for {path} is not base64 encoded.")
+        raw_content = re.sub(r"\s+", "", str(payload.get("content", "")))
+        try:
+            return base64.b64decode(raw_content, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise ValueError(f"GitHub content for {path} is not valid UTF-8 base64.") from exc
+
+    def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]:
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/git/trees/{git_ref}"
+        response = self.client.get(api_url, params={"recursive": "1"})
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("truncated"):
+            raise ValueError(
+                f"GitHub tree for {git_ref} is truncated; grep coverage would be incomplete."
+            )
+        return [
+            item.get("path", "")
+            for item in payload.get("tree", [])
+            if item.get("type") == "blob" and item.get("path")
+        ]
 
 
 def _resolve_github_token() -> str | None:
@@ -72,3 +118,10 @@ def _resolve_github_token() -> str | None:
 
     token = result.stdout.strip()
     return token or None
+
+
+def _payload_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
