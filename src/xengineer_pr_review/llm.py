@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from xengineer_pr_review.locale import normalize_language, prompt_language_instruction
-from xengineer_pr_review.models import ReviewFinding, ReviewSuggestion
+from xengineer_pr_review.models import EvidenceReference, ReviewFinding, ReviewSuggestion
 
 
 @dataclass(frozen=True)
@@ -183,8 +183,11 @@ def _review_system_message(language: str) -> str:
     return (
         "You are a pragmatic senior engineer reviewing a GitHub PR. "
         "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
-        "Risk items must include severity, title, explanation, and files. "
-        "Suggestion items must include type, text, related_file, and confidence. "
+        "Risk items must include severity, title, explanation, files, and evidence. "
+        "Suggestion items must include type, text, related_file, confidence, and evidence. "
+        "Use evidence objects with kind, path, line_start, line_end, url, title, snippet, and label. "
+        "Use read_file and grep_code line numbers as code evidence. "
+        "Use web_search result ids like W1 plus the result URL as web evidence for external facts. "
         f"{prompt_language_instruction(language)}"
     )
 
@@ -336,6 +339,9 @@ def _risk_from_mapping(item: Any) -> ReviewFinding | None:
         title=title,
         explanation=explanation or title,
         files=_files_from_value(item.get("files") or item.get("related_files") or item.get("related_file")),
+        evidence=_evidence_from_value(
+            item.get("evidence") or item.get("citations") or item.get("sources")
+        ),
     )
 
 
@@ -353,6 +359,9 @@ def _suggestion_from_mapping(item: Any) -> ReviewSuggestion | None:
         body=body or "Review this item manually.",
         files=_files_from_value(item.get("files") or item.get("related_files") or item.get("related_file")),
         confidence=_confidence(item.get("confidence")),
+        evidence=_evidence_from_value(
+            item.get("evidence") or item.get("citations") or item.get("sources")
+        ),
     )
 
 
@@ -435,6 +444,48 @@ def _files_from_value(value: Any) -> list[str]:
     if isinstance(value, list):
         return [_clean_text(item) for item in value if _clean_text(item)]
     return []
+
+
+def _evidence_from_value(value: Any) -> list[EvidenceReference]:
+    references: list[EvidenceReference] = []
+    for item in _coerce_list(value):
+        reference = _evidence_from_mapping(item)
+        if reference is not None:
+            references.append(reference)
+    return references
+
+
+def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
+    if not isinstance(item, dict):
+        return None
+    line_start = _int_or_none(item.get("line_start") or item.get("start_line") or item.get("line"))
+    line_end = _int_or_none(item.get("line_end") or item.get("end_line"))
+    url = _clean_text(item.get("url") or item.get("link"))
+    kind_text = _clean_text(item.get("kind")).lower()
+    kind = "web" if kind_text == "web" or (not kind_text and url) else "code"
+    if line_start is not None and line_end is None:
+        line_end = line_start
+    if line_start is not None and line_end is not None and line_end < line_start:
+        line_start, line_end = line_end, line_start
+    return EvidenceReference(
+        kind=kind,
+        label=_clean_text(item.get("label") or item.get("id") or item.get("source_id")),
+        path=_clean_text(item.get("path") or item.get("file") or item.get("related_file")),
+        line_start=line_start,
+        line_end=line_end,
+        url=url,
+        title=_clean_text(item.get("title") or item.get("name")),
+        snippet=_clean_text(item.get("snippet") or item.get("quote") or item.get("text")),
+    )
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_files(text: str) -> list[str]:

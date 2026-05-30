@@ -128,12 +128,21 @@ class ReviewToolbox:
             return "web_search error: search request failed."
         if not results:
             return f"web_search found no results for query: {query}"
-        lines = [f"Web search results for: {query}"]
+        lines = [
+            f"Web search results for: {query}",
+            "Use citation id [W1], [W2], etc. in final JSON evidence for external facts.",
+        ]
         for index, result in enumerate(results[:max_results], start=1):
+            citation_id = f"W{index}"
             title = result.get("title") or "Untitled result"
             url = result.get("url") or ""
             content = " ".join((result.get("content") or "").split())
-            lines.append(f"{index}. {title}\n   URL: {url}\n   Snippet: {content}")
+            lines.append(
+                f"[{citation_id}] {title}\n"
+                f"   URL: {url}\n"
+                f"   Snippet: {content}\n"
+                f"   Use citation id [{citation_id}] with this URL."
+            )
         return "\n".join(lines)
 
     def _fetch_tree_paths(self) -> list[str]:

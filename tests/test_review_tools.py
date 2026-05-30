@@ -232,7 +232,9 @@ def test_web_search_formats_configured_results() -> None:
 
     result = toolbox.web_search("python security advisory", max_results=1)
 
+    assert "[W1] Example result" in result
     assert "Example result" in result
+    assert "Use citation id [W1]" in result
     assert "https://example.test/result" in result
     assert web_search.calls == [("python security advisory", 1)]
 

@@ -157,6 +157,31 @@ def test_langgraph_review_client_exposes_web_search_only_when_configured() -> No
     ] == 1000
 
 
+def test_langgraph_review_client_prompt_requires_structured_evidence() -> None:
+    completions = FakeChatCompletions(
+        [
+            _assistant_message(
+                '{"summary": "No tools needed.", "risks": [], "suggestions": []}'
+            ),
+        ]
+    )
+    toolbox = FakeToolbox()
+    toolbox.web_searcher = object()
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        chat_completions=completions,
+    )
+
+    client.analyze("PR title: demo", toolbox=toolbox)
+
+    system_message = completions.calls[0]["messages"][0]["content"]
+    assert "evidence" in system_message
+    assert "line_start" in system_message
+    assert "url" in system_message
+    assert "Use web_search result ids like W1" in system_message
+
+
 def test_web_search_tool_defaults_to_five_results() -> None:
     completions = FakeChatCompletions(
         [

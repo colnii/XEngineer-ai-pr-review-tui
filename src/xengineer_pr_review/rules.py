@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from xengineer_pr_review.models import ChangedFile, ReviewFinding
+from xengineer_pr_review.models import ChangedFile, EvidenceReference, ReviewFinding
 
 
 SENSITIVE_MARKERS = ("auth", "config", "secret", "token", "password", "ci", ".github", "migration")
@@ -24,6 +24,7 @@ def analyze_rules(files: tuple[ChangedFile, ...]) -> list[ReviewFinding]:
                         "This PR touches configuration, auth, secret, CI, or migration related paths."
                     ),
                     files=[file.path],
+                    evidence=_code_evidence(file),
                 )
             )
         if changed_lines >= 200:
@@ -33,6 +34,7 @@ def analyze_rules(files: tuple[ChangedFile, ...]) -> list[ReviewFinding]:
                     title="Large file change",
                     explanation=f"{file.path} changes {changed_lines} lines and deserves focused review.",
                     files=[file.path],
+                    evidence=_code_evidence(file),
                 )
             )
         if file.deletions > file.additions * 2 and file.deletions >= 20:
@@ -44,6 +46,7 @@ def analyze_rules(files: tuple[ChangedFile, ...]) -> list[ReviewFinding]:
                         "This file removes much more code than it adds; check behavior compatibility."
                     ),
                     files=[file.path],
+                    evidence=_code_evidence(file),
                 )
             )
 
@@ -56,7 +59,27 @@ def analyze_rules(files: tuple[ChangedFile, ...]) -> list[ReviewFinding]:
                 title="Source changed without tests",
                 explanation="Source files changed, but no test file change was detected in this PR.",
                 files=[path for path in paths if path.endswith(SOURCE_SUFFIXES)],
+                evidence=[
+                    evidence
+                    for file in files
+                    if file.path.endswith(SOURCE_SUFFIXES)
+                    for evidence in _code_evidence(file)
+                ],
             )
         )
 
     return findings
+
+
+def _code_evidence(file: ChangedFile) -> list[EvidenceReference]:
+    if not file.line_ranges:
+        return [EvidenceReference(kind="code", path=file.path)]
+    return [
+        EvidenceReference(
+            kind="code",
+            path=file.path,
+            line_start=start,
+            line_end=end,
+        )
+        for start, end in file.line_ranges
+    ]

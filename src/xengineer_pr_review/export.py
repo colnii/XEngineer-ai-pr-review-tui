@@ -10,7 +10,7 @@ from xengineer_pr_review.locale import (
     normalize_language,
     translate_builtin_text,
 )
-from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
+from xengineer_pr_review.models import EvidenceReference, ReviewFinding, ReviewReport, ReviewSuggestion
 
 
 def render_markdown(report: ReviewReport, language: str = "zh") -> str:
@@ -95,7 +95,7 @@ def _render_finding(finding: ReviewFinding, language: str) -> list[str]:
         if finding.files
         else label("common.none", language)
     )
-    return [
+    lines = [
         f"- **{label('report.severity', language)}:** "
         f"{display_severity(finding.severity, language)}",
         f"  - **{label('report.source', language)}:** "
@@ -106,6 +106,8 @@ def _render_finding(finding: ReviewFinding, language: str) -> list[str]:
         f"{translate_builtin_text(finding.explanation, language)}",
         f"  - **{label('report.related_files', language)}:** {files}",
     ]
+    lines.extend(_render_evidence(finding.evidence, language))
+    return lines
 
 
 def _render_suggestion(suggestion: ReviewSuggestion, language: str) -> list[str]:
@@ -114,7 +116,7 @@ def _render_suggestion(suggestion: ReviewSuggestion, language: str) -> list[str]
         if suggestion.files
         else label("common.none", language)
     )
-    return [
+    lines = [
         f"- **{label('report.type', language)}:** "
         f"{display_suggestion_type(suggestion.suggestion_type, language)}",
         f"  - **{label('report.suggestion', language)}:** "
@@ -123,3 +125,45 @@ def _render_suggestion(suggestion: ReviewSuggestion, language: str) -> list[str]
         f"  - **{label('report.confidence', language)}:** "
         f"{display_confidence(suggestion.confidence, language)}",
     ]
+    lines.extend(_render_evidence(suggestion.evidence, language))
+    return lines
+
+
+def _render_evidence(evidence: list[EvidenceReference], language: str) -> list[str]:
+    if not evidence:
+        return []
+    return [
+        f"  - **{label('report.evidence', language)}:**",
+        *[f"    - {_format_evidence(reference)}" for reference in evidence],
+    ]
+
+
+def _format_evidence(reference: EvidenceReference) -> str:
+    if reference.kind == "web":
+        return _format_web_evidence(reference)
+    return _format_code_evidence(reference)
+
+
+def _format_code_evidence(reference: EvidenceReference) -> str:
+    location = reference.path or "unknown"
+    if reference.line_start is not None:
+        if reference.line_end is not None and reference.line_end != reference.line_start:
+            location = f"{location}:{reference.line_start}-{reference.line_end}"
+        else:
+            location = f"{location}:{reference.line_start}"
+    text = f"`{location}`"
+    if reference.snippet:
+        text += f" - {reference.snippet}"
+    return text
+
+
+def _format_web_evidence(reference: EvidenceReference) -> str:
+    label_text = f"[{reference.label}] " if reference.label else ""
+    title = reference.title or reference.url or "Web source"
+    if reference.url:
+        text = f"{label_text}[{title}]({reference.url})"
+    else:
+        text = f"{label_text}{title}"
+    if reference.snippet:
+        text += f" - {reference.snippet}"
+    return text

@@ -99,8 +99,12 @@ def build_llm_context(
         hunk_text = "\n".join(file.hunks)
         if len(hunk_text) > max_hunk_chars:
             hunk_text = hunk_text[:max_hunk_chars] + "\n[truncated]"
+        line_ranges = _format_line_ranges(file.line_ranges)
         file_blocks.append(
-            f"File: {file.path}\nAdditions: {file.additions}, Deletions: {file.deletions}\n{hunk_text}"
+            f"File: {file.path}\n"
+            f"Additions: {file.additions}, Deletions: {file.deletions}\n"
+            f"Changed line ranges: {line_ranges}\n"
+            f"{hunk_text}"
         )
 
     prompt = "\n\n".join(
@@ -134,3 +138,12 @@ def _has_review_signal(path: str) -> bool:
 
 def has_review_signal(path: str) -> bool:
     return _has_review_signal(path)
+
+
+def _format_line_ranges(line_ranges: tuple[tuple[int, int], ...]) -> str:
+    if not line_ranges:
+        return "unknown"
+    return ", ".join(
+        str(start) if start == end else f"{start}-{end}"
+        for start, end in line_ranges
+    )

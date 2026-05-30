@@ -18,6 +18,21 @@ def test_render_markdown_contains_report_sections() -> None:
                 title="Sensitive path changed",
                 explanation="Auth path changed.",
                 files=["src/auth.py"],
+                evidence=[
+                    {
+                        "kind": "code",
+                        "path": "src/auth.py",
+                        "line_start": 12,
+                        "line_end": 16,
+                    },
+                    {
+                        "kind": "web",
+                        "label": "W1",
+                        "title": "OAuth advisory",
+                        "url": "https://example.test/oauth-advisory",
+                        "snippet": "Rotate tokens after exposure.",
+                    },
+                ],
             )
         ],
         suggestions=[
@@ -39,6 +54,9 @@ def test_render_markdown_contains_report_sections() -> None:
     assert "## 摘要" in markdown
     assert "敏感路径变更" in markdown
     assert "认证路径发生变更" in markdown
+    assert "证据" in markdown
+    assert "`src/auth.py:12-16`" in markdown
+    assert "[W1] [OAuth advisory](https://example.test/oauth-advisory)" in markdown
     assert "Add coverage for auth behavior." in markdown
 
 

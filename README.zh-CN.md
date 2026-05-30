@@ -36,6 +36,7 @@ xpr-review
 - TUI 作为主要入口。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
+- 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
 - 支持 Markdown 报告导出。
 - 支持人工确认后发布 PR 顶层 Conversation 评论。
 - 默认中文界面，可切换英文。
@@ -68,6 +69,8 @@ xpr-review
 阶段，模型可以主动调用只读工具，读取 PR head commit 上的文件，或 grep（按文本/正则搜索）
 仓库代码；当模型不再请求工具并返回最终结构化报告时，审查正常结束。若因为工具轮数上限、
 工具失败等硬性因素收束，报告会在 warnings 中说明。
+最终报告可以保留结构化 evidence，让代码行号和 web 引用跟随风险/建议进入 TUI 和 Markdown，
+而不是只停留在模型临时上下文里。
 
 如需启用可选 web search（联网搜索），配置 Tavily：
 
@@ -159,6 +162,10 @@ xpr-review --language en
 prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 仍会裁剪。
 被跳过的文件会在最终报告中列出。
 
+diff hunk 会被索引为变更后的行号范围。`read_file` 和 `grep_code` 会返回带行号的代码上下文；
+`web_search` 会返回稳定 ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词要求把这些
+引用写进风险或建议的 `evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
+
 配置真实模型后，LangGraph agent 可以按需请求更多上下文：
 
 - `read_file`：读取 PR head commit 上的仓库相对路径文件。
@@ -179,5 +186,5 @@ prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进
   `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - GitHub Action 集成。
 - 基于相同 Review Core 的 Web UI。
-- 支持 PR review 模式，在完成 diff 行号映射后发布可选行内评论。
+- 支持 PR review 模式，在完成 GitHub 行内评论 position 映射后发布可选行内评论。
 - 可配置的组织级审查规则。
