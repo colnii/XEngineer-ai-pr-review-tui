@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -308,11 +307,3 @@ def _tool_schemas(web_search_enabled: bool) -> list[dict[str, Any]]:
             }
         )
     return schemas
-
-
-def openai_langgraph_client(language: str = "zh") -> LangGraphReviewClient:
-    return LangGraphReviewClient(
-        model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
-        language=language,
-        api_key=os.environ.get("OPENAI_API_KEY"),
-    )

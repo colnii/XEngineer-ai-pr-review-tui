@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import os
+import re
 import subprocess
 from urllib.parse import quote
 
@@ -61,14 +63,21 @@ class GitHubClient:
         payload = response.json()
         if payload.get("encoding") != "base64":
             raise ValueError(f"GitHub content for {path} is not base64 encoded.")
-        raw_content = str(payload.get("content", "")).replace("\n", "")
-        return base64.b64decode(raw_content).decode("utf-8")
+        raw_content = re.sub(r"\s+", "", str(payload.get("content", "")))
+        try:
+            return base64.b64decode(raw_content, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise ValueError(f"GitHub content for {path} is not valid UTF-8 base64.") from exc
 
     def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/git/trees/{git_ref}"
         response = self.client.get(api_url, params={"recursive": "1"})
         response.raise_for_status()
         payload = response.json()
+        if payload.get("truncated"):
+            raise ValueError(
+                f"GitHub tree for {git_ref} is truncated; grep coverage would be incomplete."
+            )
         return [
             item.get("path", "")
             for item in payload.get("tree", [])

@@ -81,6 +81,30 @@ def test_grep_code_searches_review_relevant_files_with_limits() -> None:
     assert "[truncated after 2 matches]" in result
 
 
+def test_grep_code_reuses_tree_listing_for_repeated_searches() -> None:
+    github = FakeGitHub(
+        files={
+            "src/app.py": "target = True\n",
+            "tests/test_app.py": "assert target\n",
+        },
+        tree_paths=["src/app.py", "tests/test_app.py"],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    first = toolbox.grep_code("target")
+    second = toolbox.grep_code("assert")
+
+    assert "src/app.py:1: target = True" in first
+    assert "tests/test_app.py:1: assert target" in second
+    assert [request for request in github.requests if request[0] == "tree"] == [
+        ("tree", "", "abc123")
+    ]
+
+
 def test_web_search_reports_unavailable_when_not_configured() -> None:
     toolbox = ReviewToolbox(
         github=FakeGitHub(files={}, tree_paths=[]),

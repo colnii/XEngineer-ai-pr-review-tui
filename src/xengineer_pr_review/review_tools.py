@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import Protocol
 
@@ -32,6 +32,7 @@ class ReviewToolbox:
     ref: PullRequestRef
     git_ref: str
     web_searcher: WebSearchLike | None = None
+    _tree_paths_cache: list[str] | None = field(default=None, init=False, repr=False)
 
     def read_file(self, path: str, max_lines: int = MAX_READ_LINES) -> str:
         try:
@@ -75,7 +76,7 @@ class ReviewToolbox:
             return f"grep_code error: invalid regex pattern: {exc}"
 
         try:
-            paths = self.github.fetch_tree_paths(self.ref, self.git_ref)
+            paths = self._fetch_tree_paths()
         except Exception as exc:
             return f"grep_code error: could not list repository tree: {exc}"
 
@@ -118,6 +119,11 @@ class ReviewToolbox:
             content = " ".join((result.get("content") or "").split())
             lines.append(f"{index}. {title}\n   URL: {url}\n   Snippet: {content}")
         return "\n".join(lines)
+
+    def _fetch_tree_paths(self) -> list[str]:
+        if self._tree_paths_cache is None:
+            self._tree_paths_cache = self.github.fetch_tree_paths(self.ref, self.git_ref)
+        return self._tree_paths_cache
 
 
 class TavilyWebSearchClient:

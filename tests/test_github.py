@@ -1,7 +1,8 @@
-import json
 import base64
+import json
 
 import httpx
+import pytest
 
 import xengineer_pr_review.github as github_module
 from xengineer_pr_review.github import GitHubClient
@@ -201,6 +202,45 @@ def test_fetch_file_text_reads_content_at_requested_ref(monkeypatch) -> None:
     ]
 
 
+def test_fetch_file_text_rejects_invalid_base64(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "base64",
+                "content": "@@@not-base64@@@",
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="not valid UTF-8 base64"):
+        client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/app.py", "abc123")
+
+
+def test_fetch_file_text_accepts_base64_whitespace(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    encoded = base64.b64encode(b"print('hello')\n").decode()
+    wrapped = f" {encoded[:5]}\r\n\t{encoded[5:]} "
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "encoding": "base64",
+                "content": wrapped,
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    text = client.fetch_file_text(PullRequestRef("owner", "repo", 1), "src/app.py", "abc123")
+
+    assert text == "print('hello')\n"
+
+
 def test_fetch_tree_paths_returns_blob_paths_at_requested_ref(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
 
@@ -225,6 +265,26 @@ def test_fetch_tree_paths_returns_blob_paths_at_requested_ref(monkeypatch) -> No
     paths = client.fetch_tree_paths(PullRequestRef("owner", "repo", 1), "abc123")
 
     assert paths == ["src/app.py", "README.md"]
+
+
+def test_fetch_tree_paths_rejects_truncated_recursive_tree(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "truncated": True,
+                "tree": [
+                    {"type": "blob", "path": "src/app.py"},
+                ],
+            },
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(ValueError, match="tree for abc123 is truncated"):
+        client.fetch_tree_paths(PullRequestRef("owner", "repo", 1), "abc123")
 
 
 def _pull_api_response(request: httpx.Request) -> httpx.Response:
