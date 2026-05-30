@@ -18,7 +18,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     assert "uses: owner/xengineer@v1" in workflow
     assert "github-token: ${{ github.token }}" in workflow
     assert "language: en" in workflow
-    assert "issues: write" in workflow
+    assert "issues: write" not in workflow
     assert "pull-requests: write" in workflow
 
 
