@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "xengineer-pr-review"
 version = "0.1.0"
-description = "AI-assisted TUI for reviewing public GitHub pull requests"
+description = "AI-assisted TUI for reviewing GitHub pull requests"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

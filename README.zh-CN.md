@@ -1,6 +1,6 @@
 # XEngineer AI PR Review TUI
 
-用于审查公开 GitHub Pull Request 的终端界面工具。它会抓取 PR 元数据和 diff，结合确定性规则与 AI 分析生成审查报告，并支持导出 Markdown。
+用于审查 GitHub Pull Request 的终端界面工具。它会抓取 PR 元数据和 diff，结合确定性规则与 AI 分析生成审查报告，并支持导出 Markdown。公开 PR 可匿名审查；私有仓库 PR 需要本机已配置有权限的 GitHub token。
 
 ## 快速开始
 
@@ -32,7 +32,7 @@ xpr-review
 
 ## 当前范围
 
-- 仅支持公开 GitHub PR。
+- 支持公开 GitHub PR，以及已配置 token 且有权限访问的私有 GitHub PR。
 - TUI 作为主要入口。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
@@ -54,14 +54,18 @@ export OPENAI_API_KEY="..."
 xpr-review
 ```
 
-如果 GitHub 匿名 API 请求被限流，可以提供 GitHub token：
+如果 GitHub 匿名 API 请求被限流，或需要审查私有仓库 PR，可以提供 GitHub token：
 
 ```bash
 export GITHUB_TOKEN="$(gh auth token)"
 xpr-review --mock-llm
 ```
 
-启动后粘贴公开 PR 地址，例如：
+也可以使用 `GH_TOKEN`，或先运行 `gh auth login`，让应用通过 `gh auth token` 读取本机登录态。
+细粒度 token 至少需要目标仓库的 `Pull requests: read` 或 `Contents: read` 权限。
+TUI 不会输入、显示或保存 token。
+
+启动后粘贴 PR 地址，例如：
 
 ```text
 https://github.com/Textualize/textual/pull/1
@@ -97,7 +101,7 @@ xpr-review --language en
 
 ## 限制
 
-- 仅支持公开 GitHub PR。
+- 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。
 - 不会自动在 PR 下发表评论。
 - 没有仓库级语义索引。
 
@@ -106,6 +110,5 @@ xpr-review --language en
 - 发布轻量 npm wrapper，评委可用
   `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - GitHub Action 集成。
-- 支持私有仓库 token。
 - 基于相同 Review Core 的 Web UI。
 - 可配置的组织级审查规则。

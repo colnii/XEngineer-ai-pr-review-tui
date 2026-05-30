@@ -5,6 +5,22 @@ from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.models import PullRequestRef
 
 
+PULL_API_URL = "https://api.github.com/repos/owner/repo/pulls/1"
+PULL_PAYLOAD = {
+    "title": "Demo PR",
+    "user": {"login": "alice"},
+    "base": {"ref": "main"},
+    "head": {"ref": "feature"},
+}
+DIFF_TEXT = """diff --git a/src/app.py b/src/app.py
+--- a/src/app.py
++++ b/src/app.py
+@@ -1 +1,2 @@
+-old = True
++new = True
+"""
+
+
 def test_github_client_uses_github_token_header(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "example-token")
     monkeypatch.delenv("GH_TOKEN", raising=False)
@@ -66,35 +82,19 @@ def test_github_client_supports_socks_proxy_environment(monkeypatch) -> None:
     assert client.client is not None
 
 
-def test_fetch_pr_follows_diff_redirect() -> None:
+def test_fetch_pr_uses_authenticated_pull_api_for_diff(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "private-token")
+    requests: list[tuple[str, str, str | None]] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
-        if str(request.url) == "https://api.github.com/repos/owner/repo/pulls/1":
-            return httpx.Response(
-                200,
-                json={
-                    "title": "Demo PR",
-                    "user": {"login": "alice"},
-                    "base": {"ref": "main"},
-                    "head": {"ref": "feature"},
-                },
+        requests.append(
+            (
+                str(request.url),
+                request.headers.get("accept", ""),
+                request.headers.get("authorization"),
             )
-        if str(request.url) == "https://github.com/owner/repo/pull/1.diff":
-            return httpx.Response(
-                302,
-                headers={"Location": "https://patch-diff.githubusercontent.com/raw/owner/repo/pull/1.diff"},
-            )
-        if str(request.url) == "https://patch-diff.githubusercontent.com/raw/owner/repo/pull/1.diff":
-            return httpx.Response(
-                200,
-                text="""diff --git a/src/app.py b/src/app.py
---- a/src/app.py
-+++ b/src/app.py
-@@ -1 +1,2 @@
--old = True
-+new = True
-""",
-            )
-        return httpx.Response(404)
+        )
+        return _pull_api_response(request)
 
     client = GitHubClient(transport=httpx.MockTransport(handler))
 
@@ -102,3 +102,45 @@ def test_fetch_pr_follows_diff_redirect() -> None:
 
     assert pr.title == "Demo PR"
     assert [file.path for file in pr.files] == ["src/app.py"]
+    assert requests == [
+        (
+            PULL_API_URL,
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            PULL_API_URL,
+            "application/vnd.github.diff",
+            "Bearer private-token",
+        ),
+    ]
+
+
+def test_fetch_pr_allows_public_pr_without_token(monkeypatch) -> None:
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+
+    def fake_run(*args, **kwargs):
+        return type("Completed", (), {"returncode": 1, "stdout": ""})()
+
+    monkeypatch.setattr(github_module.subprocess, "run", fake_run)
+    authorizations: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        authorizations.append(request.headers.get("authorization"))
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert pr.title == "Demo PR"
+    assert authorizations == [None, None]
+
+
+def _pull_api_response(request: httpx.Request) -> httpx.Response:
+    if str(request.url) != PULL_API_URL:
+        return httpx.Response(404)
+    if request.headers.get("accept") == "application/vnd.github.diff":
+        return httpx.Response(200, text=DIFF_TEXT)
+    return httpx.Response(200, json=PULL_PAYLOAD)
