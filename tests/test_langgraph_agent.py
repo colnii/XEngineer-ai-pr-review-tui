@@ -86,7 +86,7 @@ def test_langgraph_review_client_tolerates_bad_integer_tool_args() -> None:
     result = client.analyze("PR title: demo", toolbox=toolbox)
 
     assert result.summary == "Recovered from bad args."
-    assert toolbox.calls == [("read_file", "src/app.py", 200)]
+    assert toolbox.calls == [("read_file", "src/app.py", 1000)]
 
 
 def test_langgraph_review_client_does_not_warn_on_file_content_with_error_word() -> None:
@@ -132,6 +132,9 @@ def test_langgraph_review_client_exposes_web_search_only_when_configured() -> No
 
     tool_names = [tool["function"]["name"] for tool in completions.calls[0]["tools"]]
     assert tool_names == ["read_file", "grep_code"]
+    assert completions.calls[0]["tools"][0]["function"]["parameters"]["properties"]["max_lines"][
+        "maximum"
+    ] == 1000
 
 
 class FakeToolbox:
@@ -139,7 +142,7 @@ class FakeToolbox:
         self.calls: list[tuple[object, ...]] = []
         self.read_file_result = "File: src/app.py\n1: print('hello')"
 
-    def read_file(self, path: str, max_lines: int = 200) -> str:
+    def read_file(self, path: str, max_lines: int = 1000) -> str:
         self.calls.append(("read_file", path, max_lines))
         return self.read_file_result
 

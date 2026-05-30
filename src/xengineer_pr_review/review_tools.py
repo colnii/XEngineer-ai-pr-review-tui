@@ -12,7 +12,7 @@ from xengineer_pr_review.context import has_review_signal
 from xengineer_pr_review.models import PullRequestRef
 
 
-MAX_READ_LINES = 200
+MAX_READ_LINES = 1000
 MAX_GREP_FILES = 80
 MAX_GREP_RESULTS = 20
 
@@ -50,7 +50,9 @@ class ReviewToolbox:
         selected = lines[:max_lines]
         numbered = [f"{index}: {line}" for index, line in enumerate(selected, start=1)]
         if len(lines) > max_lines:
-            numbered.append(f"[truncated after {max_lines} lines]")
+            numbered.append(
+                f"[truncated after {max_lines} lines; single file is too large to read fully]"
+            )
         return "\n".join([f"File: {path}", *numbered])
 
     def grep_code(

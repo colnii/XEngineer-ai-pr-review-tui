@@ -21,8 +21,29 @@ def test_read_file_returns_bounded_numbered_content() -> None:
     assert "1: first" in result
     assert "2: second" in result
     assert "third" not in result
-    assert "[truncated after 2 lines]" in result
+    assert "truncated after 2 lines" in result
+    assert "single file is too large" in result
     assert github.requests == [("read", "src/app.py", "abc123")]
+
+
+def test_read_file_defaults_to_1000_lines_and_flags_large_files() -> None:
+    github = FakeGitHub(
+        files={
+            "src/large.py": "\n".join(f"line {index}" for index in range(1, 1002)),
+        },
+        tree_paths=["src/large.py"],
+    )
+    toolbox = ReviewToolbox(
+        github=github,
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+    )
+
+    result = toolbox.read_file("src/large.py")
+
+    assert "1000: line 1000" in result
+    assert "1001: line 1001" not in result
+    assert "single file is too large" in result
 
 
 def test_read_file_returns_error_for_unsafe_path() -> None:
