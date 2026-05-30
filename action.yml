@@ -1,6 +1,10 @@
 name: XEngineer PR Review
 description: Review a GitHub pull request with XEngineer and publish one PR conversation comment.
 
+branding:
+  icon: git-pull-request
+  color: blue
+
 inputs:
   pr-url:
     description: GitHub pull request URL. Defaults to the triggering pull_request URL.

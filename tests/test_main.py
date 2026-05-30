@@ -242,6 +242,23 @@ def test_main_refuses_publish_without_confirmation(monkeypatch) -> None:
     assert pipeline_built is False
 
 
+def test_main_refuses_auto_publish_without_publish_comment(monkeypatch) -> None:
+    pipeline_built = False
+
+    def fake_build_pipeline(**kwargs):
+        nonlocal pipeline_built
+        pipeline_built = True
+        return PublishingPipeline()
+
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--pr-url", PR_URL, "--auto-publish"])
+
+    assert exc.value.code == 2
+    assert pipeline_built is False
+
+
 def test_publish_review_comment_refuses_failed_llm_report() -> None:
     pipeline = PublishingPipeline(llm_status="failed")
 

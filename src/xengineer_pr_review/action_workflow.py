@@ -11,6 +11,7 @@ def render_action_workflow(
     action_uses: str = DEFAULT_ACTION_USES,
     language: str = "zh",
 ) -> str:
+    # GitHub expressions need doubled braces inside this f-string template.
     return f"""name: XEngineer PR Review
 
 on:

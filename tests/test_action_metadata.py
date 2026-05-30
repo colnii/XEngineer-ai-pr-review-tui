@@ -5,6 +5,8 @@ def test_action_metadata_runs_xpr_review_publish_comment() -> None:
     metadata = Path("action.yml").read_text(encoding="utf-8")
 
     assert "using: composite" in metadata
+    assert "branding:" in metadata
+    assert "icon: git-pull-request" in metadata
     assert "actions/setup-python@v5" in metadata
     assert 'python -m pip install "${{ github.action_path }}"' in metadata
     assert "--publish-comment" in metadata

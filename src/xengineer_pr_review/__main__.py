@@ -143,6 +143,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         parser.error("--output cannot be used with --publish-comment")
     if args.output == "":
         parser.error("--output must not be empty")
+    if args.auto_publish and not args.publish_comment:
+        parser.error("--auto-publish requires --publish-comment")
 
     if args.publish_comment:
         if not args.pr_url:
