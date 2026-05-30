@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import os
 import subprocess
+from urllib.parse import quote
 
 import httpx
 
@@ -41,6 +43,7 @@ class GitHubClient:
             head_branch=payload.get("head", {}).get("ref", "unknown"),
             files=parse_unified_diff(diff_text),
             diff_text=diff_text,
+            head_sha=payload.get("head", {}).get("sha", ""),
         )
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
@@ -49,6 +52,28 @@ class GitHubClient:
         response.raise_for_status()
         payload = response.json()
         return PostedComment(html_url=payload.get("html_url", ""))
+
+    def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str:
+        encoded_path = quote(path.strip("/"), safe="/")
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/contents/{encoded_path}"
+        response = self.client.get(api_url, params={"ref": git_ref})
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("encoding") != "base64":
+            raise ValueError(f"GitHub content for {path} is not base64 encoded.")
+        raw_content = str(payload.get("content", "")).replace("\n", "")
+        return base64.b64decode(raw_content).decode("utf-8")
+
+    def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]:
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/git/trees/{git_ref}"
+        response = self.client.get(api_url, params={"recursive": "1"})
+        response.raise_for_status()
+        payload = response.json()
+        return [
+            item.get("path", "")
+            for item in payload.get("tree", [])
+            if item.get("type") == "blob" and item.get("path")
+        ]
 
 
 def _resolve_github_token() -> str | None:

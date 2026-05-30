@@ -185,6 +185,10 @@ def _review_system_message(language: str) -> str:
     )
 
 
+def build_review_system_message(language: str) -> str:
+    return _review_system_message(language)
+
+
 def _parse_json_output(text: str) -> LLMResult | None:
     try:
         payload = json.loads(text)

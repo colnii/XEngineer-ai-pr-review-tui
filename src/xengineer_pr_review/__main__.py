@@ -7,7 +7,12 @@ from collections.abc import Sequence
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
-from xengineer_pr_review.llm import DeepSeekLLMClient, MockLLMClient, OpenAILLMClient
+from xengineer_pr_review.langgraph_agent import DEFAULT_OPENAI_MODEL, LangGraphReviewClient
+from xengineer_pr_review.llm import (
+    DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEK_MODEL,
+    MockLLMClient,
+)
 from xengineer_pr_review.locale import normalize_language
 from xengineer_pr_review.pipeline import ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
@@ -27,9 +32,18 @@ def build_pipeline(
     if use_mock_llm:
         llm = MockLLMClient(language=language)
     elif os.environ.get("DEEPSEEK_API_KEY"):
-        llm = DeepSeekLLMClient(language=language)
+        llm = LangGraphReviewClient(
+            model=os.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL,
+            language=language,
+            api_key=os.environ.get("DEEPSEEK_API_KEY"),
+            base_url=os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL,
+        )
     elif os.environ.get("OPENAI_API_KEY"):
-        llm = OpenAILLMClient(language=language)
+        llm = LangGraphReviewClient(
+            model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
+            language=language,
+            api_key=os.environ.get("OPENAI_API_KEY"),
+        )
     else:
         llm = MockLLMClient(language=language)
     return ReviewPipeline(github=GitHubClient(), llm=llm)

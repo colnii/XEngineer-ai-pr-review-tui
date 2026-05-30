@@ -8,6 +8,7 @@ from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.llm import MockLLMClient
 from xengineer_pr_review.models import PullRequestData, PullRequestRef, ReviewReport
 from xengineer_pr_review.pr_url import parse_pr_url
+from xengineer_pr_review.review_tools import ReviewToolbox, default_web_searcher
 from xengineer_pr_review.rules import analyze_rules
 
 
@@ -37,12 +38,13 @@ class ReviewPipeline:
             head_branch=pr.head_branch,
             files=files,
             diff_text=pr.diff_text,
+            head_sha=pr.head_sha,
         )
 
         findings = analyze_rules(files)
         context = build_llm_context(pr, findings)
         try:
-            llm_result = self.llm.analyze(context.prompt)
+            llm_result = self._analyze_with_optional_tools(context.prompt, pr)
             summary = llm_result.summary
             findings = [*findings, *llm_result.risks]
             suggestions = llm_result.suggestions
@@ -80,3 +82,20 @@ class ReviewPipeline:
     def post_review_comment(self, pr_url: str, body: str):
         ref = parse_pr_url(pr_url)
         return self.github.post_pr_comment(ref, body)
+
+    def _analyze_with_optional_tools(self, prompt: str, pr: PullRequestData):
+        if not getattr(self.llm, "supports_review_tools", False):
+            return self.llm.analyze(prompt)
+        if not _github_supports_read_tools(self.github):
+            return self.llm.analyze(prompt, toolbox=None)
+        toolbox = ReviewToolbox(
+            github=self.github,
+            ref=pr.ref,
+            git_ref=pr.head_sha or pr.head_branch,
+            web_searcher=default_web_searcher(),
+        )
+        return self.llm.analyze(prompt, toolbox=toolbox)
+
+
+def _github_supports_read_tools(github: GitHubLike) -> bool:
+    return hasattr(github, "fetch_file_text") and hasattr(github, "fetch_tree_paths")

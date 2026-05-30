@@ -36,6 +36,7 @@ class PullRequestData:
     head_branch: str
     files: tuple[ChangedFile, ...]
     diff_text: str
+    head_sha: str = ""
 
 
 @dataclass(frozen=True)

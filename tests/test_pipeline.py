@@ -27,7 +27,16 @@ class FakeGitHubClient:
             head_branch="feature",
             files=(),
             diff_text=diff,
+            head_sha="sha123",
         )
+
+    def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str:
+        assert git_ref == "sha123"
+        return "token = 'x'\nnew = True\n"
+
+    def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]:
+        assert git_ref == "sha123"
+        return ["src/auth.py"]
 
 
 def test_pipeline_returns_report_with_rules_and_llm_summary() -> None:
@@ -83,6 +92,29 @@ def test_pipeline_merges_ai_risks_with_rule_findings_and_sets_metadata() -> None
     assert any(finding.source == "ai" for finding in report.findings)
     assert report.suggestions[0].title == "AI suggestion"
     assert report.llm_status == "ok"
+
+
+class ToolAwareLLMClient:
+    supports_review_tools = True
+
+    def __init__(self) -> None:
+        self.tool_output = ""
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is not None
+        self.tool_output = toolbox.read_file("src/auth.py", max_lines=1)
+        return LLMResult(summary="AI summary with tools")
+
+
+def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
+    llm = ToolAwareLLMClient()
+    pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=llm)
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    assert report.summary == "AI summary with tools"
+    assert "File: src/auth.py" in llm.tool_output
+    assert "1: token = 'x'" in llm.tool_output
 
 
 class PostingGitHubClient(FakeGitHubClient):

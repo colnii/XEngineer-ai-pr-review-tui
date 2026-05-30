@@ -130,3 +130,7 @@ def _has_review_signal(path: str) -> bool:
     if lower_path.endswith(LOW_SIGNAL_SUFFIXES):
         return False
     return parsed.suffix.lower() not in LOW_SIGNAL_EXTENSIONS
+
+
+def has_review_signal(path: str) -> bool:
+    return _has_review_signal(path)
