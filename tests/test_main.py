@@ -127,6 +127,25 @@ def test_main_publishes_comment_only_with_explicit_confirmation(monkeypatch, cap
     assert "Published PR comment:" in capsys.readouterr().out
 
 
+def test_main_publishes_comment_with_auto_publish_for_automation(monkeypatch, capsys) -> None:
+    pipeline = PublishingPipeline()
+    monkeypatch.setattr(main_module, "build_pipeline", lambda **kwargs: pipeline)
+
+    main_module.main(
+        [
+            "--pr-url",
+            PR_URL,
+            "--publish-comment",
+            "--auto-publish",
+            "--mock-llm",
+        ]
+    )
+
+    assert pipeline.runs == [PR_URL]
+    assert len(pipeline.posts) == 1
+    assert "Published PR comment:" in capsys.readouterr().out
+
+
 def test_main_writes_report_to_output_path(monkeypatch, tmp_path, capsys) -> None:
     pipeline = PublishingPipeline()
     output_path = tmp_path / "review-report.md"
@@ -250,6 +269,14 @@ def test_main_init_action_writes_workflow(tmp_path, capsys) -> None:
     assert workflow_path.exists()
     assert "uses: owner/xengineer@v1" in workflow_path.read_text(encoding="utf-8")
     assert f"Wrote GitHub Actions workflow: {workflow_path}" in capsys.readouterr().out
+
+
+def test_main_help_lists_init_action(capsys) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--help"])
+
+    assert exc.value.code == 0
+    assert "init-action" in capsys.readouterr().out
 
 
 def test_main_init_action_works_from_console_argv(monkeypatch, tmp_path) -> None:

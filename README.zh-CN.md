@@ -118,6 +118,8 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 ```
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
+在 CI 等非交互式自动化环境里，可以用 `--auto-publish` 代替 `--confirm-publish`，
+让“自动发布”的意图更清楚。
 
 ### GitHub Actions 集成
 

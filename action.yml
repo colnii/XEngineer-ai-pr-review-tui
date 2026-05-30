@@ -47,7 +47,7 @@ runs:
       shell: bash
       env:
         PR_URL: ${{ inputs.pr-url || github.event.pull_request.html_url }}
-        XENGINEER_GITHUB_TOKEN: ${{ inputs.github-token }}
+        XENGINEER_GITHUB_TOKEN: ${{ inputs.github-token || github.token }}
         XENGINEER_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         XENGINEER_OPENAI_API_KEY: ${{ inputs.openai-api-key }}
         XENGINEER_TAVILY_API_KEY: ${{ inputs.tavily-api-key }}
@@ -60,6 +60,10 @@ runs:
         if [ -n "${XENGINEER_GITHUB_TOKEN}" ]; then
           export GITHUB_TOKEN="${XENGINEER_GITHUB_TOKEN}"
         fi
+        if [ -z "${GITHUB_TOKEN:-}" ]; then
+          echo "GitHub token is required. Pass github-token or allow github.token in the workflow." >&2
+          exit 2
+        fi
         if [ -n "${XENGINEER_DEEPSEEK_API_KEY}" ]; then
           export DEEPSEEK_API_KEY="${XENGINEER_DEEPSEEK_API_KEY}"
         fi
@@ -71,10 +75,12 @@ runs:
         fi
 
         args=(
-          xpr-review
+          python
+          -m
+          xengineer_pr_review
           --pr-url "${PR_URL}"
           --publish-comment
-          --confirm-publish
+          --auto-publish
           --language "${{ inputs.language }}"
         )
 

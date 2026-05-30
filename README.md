@@ -128,6 +128,8 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 ```
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
+In non-interactive automation, `--auto-publish` can be used instead of
+`--confirm-publish` to make the intent explicit.
 
 ### GitHub Actions Integration
 

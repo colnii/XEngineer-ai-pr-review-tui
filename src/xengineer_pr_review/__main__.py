@@ -99,11 +99,9 @@ def write_review_output(markdown: str, output: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
-    if argv and argv[0] == "init-action":
-        _main_init_action(argv[1:])
-        return
 
     parser = argparse.ArgumentParser()
+    init_action_parser = _add_init_action_subcommand(parser)
     parser.add_argument(
         "--judge-demo",
         action="store_true",
@@ -126,12 +124,21 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Required with --publish-comment to confirm the GitHub write operation",
     )
     parser.add_argument(
+        "--auto-publish",
+        action="store_true",
+        help="Automation alias for --confirm-publish when used with --publish-comment",
+    )
+    parser.add_argument(
         "--language",
         choices=("zh", "en"),
         default="zh",
         help="TUI and report language, default: zh",
     )
     args = parser.parse_args(argv)
+    if args.command == "init-action":
+        _run_init_action(args, init_action_parser)
+        return
+
     if args.output is not None and args.publish_comment:
         parser.error("--output cannot be used with --publish-comment")
     if args.output == "":
@@ -140,8 +147,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.publish_comment:
         if not args.pr_url:
             parser.error("--publish-comment requires --pr-url")
-        if not args.confirm_publish:
-            parser.error("--publish-comment requires --confirm-publish")
+        if not (args.confirm_publish or args.auto_publish):
+            parser.error("--publish-comment requires --confirm-publish or --auto-publish")
         if args.judge_demo:
             parser.error("--publish-comment cannot be used with --judge-demo")
         url = publish_review_comment(
@@ -185,31 +192,37 @@ def main(argv: Sequence[str] | None = None) -> None:
     ).run()
 
 
-def _main_init_action(argv: Sequence[str]) -> None:
-    parser = argparse.ArgumentParser(prog="xpr-review init-action")
-    parser.add_argument(
+def _add_init_action_subcommand(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    subparsers = parser.add_subparsers(dest="command")
+    init_action_parser = subparsers.add_parser(
+        "init-action",
+        help="Generate a GitHub Actions workflow for a target repository",
+    )
+    init_action_parser.add_argument(
         "--repo-path",
         default=".",
         help="Repository path where .github/workflows/xengineer-pr-review.yml will be written",
     )
-    parser.add_argument(
+    init_action_parser.add_argument(
         "--action-uses",
         default=DEFAULT_ACTION_USES,
         help="Action reference used in the generated workflow",
     )
-    parser.add_argument(
+    init_action_parser.add_argument(
         "--language",
         choices=("zh", "en"),
         default="zh",
         help="Generated workflow report language, default: zh",
     )
-    parser.add_argument(
+    init_action_parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite an existing xengineer-pr-review workflow file",
     )
-    args = parser.parse_args(argv)
+    return init_action_parser
 
+
+def _run_init_action(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     try:
         workflow_path = init_action_workflow(
             repo_path=args.repo_path,
