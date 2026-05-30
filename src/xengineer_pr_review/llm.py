@@ -41,6 +41,8 @@ SECTION_ALIASES = {
 VALID_SEVERITIES = {"high", "medium", "low"}
 VALID_SUGGESTION_TYPES = {"comment", "test", "maintainability", "edge-case"}
 VALID_CONFIDENCE = {"high", "medium", "low"}
+DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 
 
 def parse_llm_output(text: str) -> LLMResult:
@@ -139,14 +141,48 @@ class OpenAILLMClient:
         return parse_llm_output(text)
 
     def _build_input(self, prompt: str) -> str:
-        return (
-            "You are a pragmatic senior engineer reviewing a GitHub PR. "
-            "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
-            "Risk items must include severity, title, explanation, and files. "
-            "Suggestion items must include type, text, related_file, and confidence. "
-            f"{prompt_language_instruction(self.language)}\n\n"
-            f"{prompt}"
+        return f"{_review_system_message(self.language)}\n\n{prompt}"
+
+
+class DeepSeekLLMClient:
+    def __init__(
+        self,
+        model: str | None = None,
+        language: str = "zh",
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        self.model = model or os.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
+        self.language = normalize_language(language)
+        self.client = OpenAI(
+            api_key=api_key or os.environ.get("DEEPSEEK_API_KEY"),
+            base_url=base_url or os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL,
         )
+
+    def analyze(self, prompt: str) -> LLMResult:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": self._build_system_message()},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
+        )
+        text = response.choices[0].message.content or ""
+        return parse_llm_output(text.strip())
+
+    def _build_system_message(self) -> str:
+        return _review_system_message(self.language)
+
+
+def _review_system_message(language: str) -> str:
+    return (
+        "You are a pragmatic senior engineer reviewing a GitHub PR. "
+        "Return a compact JSON object with keys: summary, risks, suggestions, notes. "
+        "Risk items must include severity, title, explanation, and files. "
+        "Suggestion items must include type, text, related_file, and confidence. "
+        f"{prompt_language_instruction(language)}"
+    )
 
 
 def _parse_json_output(text: str) -> LLMResult | None:
