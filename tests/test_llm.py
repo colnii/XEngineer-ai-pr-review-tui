@@ -87,6 +87,36 @@ def test_parse_llm_json_output() -> None:
     assert result.warnings == []
 
 
+def test_parse_llm_json_output_embedded_in_markdown_fence() -> None:
+    result = parse_llm_output(
+        """
+        I now have enough context to write the final review.
+
+        ```json
+        {
+          "summary": "The PR adds repository read tools.",
+          "risks": [
+            {
+              "severity": "low",
+              "title": "API budget",
+              "explanation": "Repeated grep calls can spend API budget.",
+              "files": ["src/xengineer_pr_review/review_tools.py"]
+            }
+          ],
+          "suggestions": [],
+          "notes": "The JSON was wrapped in a code fence."
+        }
+        ```
+        """
+    )
+
+    assert result.summary == "The PR adds repository read tools."
+    assert result.risks[0].title == "API budget"
+    assert result.risks[0].files == ["src/xengineer_pr_review/review_tools.py"]
+    assert result.notes == "The JSON was wrapped in a code fence."
+    assert result.warnings == []
+
+
 def test_parse_llm_markdown_headings_output() -> None:
     result = parse_llm_output(
         """

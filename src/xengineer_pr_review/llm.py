@@ -54,9 +54,10 @@ def parse_llm_output(text: str) -> LLMResult:
             raw_output=text,
         )
 
-    json_result = _parse_json_output(cleaned)
-    if json_result is not None:
-        return json_result
+    for candidate in _json_output_candidates(cleaned):
+        json_result = _parse_json_output(candidate)
+        if json_result is not None:
+            return json_result
 
     markdown_result = _parse_markdown_output(cleaned)
     if markdown_result is not None:
@@ -252,6 +253,16 @@ def _strip_outer_code_fence(text: str) -> str:
     if len(lines) < 2 or not lines[-1].strip().startswith("```"):
         return text
     return "\n".join(lines[1:-1]).strip()
+
+
+def _json_output_candidates(text: str) -> list[str]:
+    candidates = [text]
+    fence_pattern = re.compile(r"```(?:[a-zA-Z0-9_-]+)?\s*(.*?)```", re.DOTALL)
+    for match in fence_pattern.finditer(text):
+        fenced = match.group(1).strip()
+        if fenced:
+            candidates.append(fenced)
+    return candidates
 
 
 def _split_markdown_sections(text: str) -> dict[str, str]:
