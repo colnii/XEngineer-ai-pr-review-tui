@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-DEFAULT_ACTION_USES = "colnii/XEngineer-ai-pr-review-tui@main"
+DEFAULT_ACTION_USES = "colnii/XEngineer-ai-pr-review-tui@v1"
 WORKFLOW_RELATIVE_PATH = Path(".github/workflows/xengineer-pr-review.yml")
 
 

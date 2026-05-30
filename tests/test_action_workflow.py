@@ -22,6 +22,10 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     assert "pull-requests: write" in workflow
 
 
+def test_default_action_reference_uses_stable_major_version() -> None:
+    assert DEFAULT_ACTION_USES == "colnii/XEngineer-ai-pr-review-tui@v1"
+
+
 def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) -> None:
     written_path = init_action_workflow(
         repo_path=tmp_path,

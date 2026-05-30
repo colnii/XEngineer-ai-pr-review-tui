@@ -154,7 +154,7 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     steps:
       - name: Run XEngineer PR review
-        uses: colnii/XEngineer-ai-pr-review-tui@main
+        uses: colnii/XEngineer-ai-pr-review-tui@v1
         with:
           pr-url: ${{ github.event.pull_request.html_url }}
           github-token: ${{ github.token }}
