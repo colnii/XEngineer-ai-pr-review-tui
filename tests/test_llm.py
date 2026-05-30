@@ -1,6 +1,8 @@
 from xengineer_pr_review import llm as llm_module
 from xengineer_pr_review.llm import (
+    DeepSeekLLMClient,
     MockLLMClient,
+    OpenAILLMClient,
     build_review_system_message,
     parse_llm_output,
 )
@@ -32,9 +34,73 @@ def test_review_prompt_uses_selected_language_instruction() -> None:
     assert "summary" in prompt
 
 
-def test_llm_module_does_not_keep_legacy_provider_clients() -> None:
-    assert not hasattr(llm_module, "OpenAILLMClient")
-    assert not hasattr(llm_module, "DeepSeekLLMClient")
+def test_legacy_openai_client_wraps_langgraph_client(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    calls: list[tuple[str, object]] = []
+
+    class FakeLangGraphReviewClient:
+        supports_review_tools = True
+
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(("init", kwargs))
+
+        def analyze(self, prompt: str, toolbox=None):
+            calls.append(("analyze", (prompt, toolbox)))
+            return parse_llm_output(
+                '{"summary": "Wrapped OpenAI.", "risks": [], "suggestions": []}'
+            )
+
+    monkeypatch.setattr(llm_module, "_langgraph_review_client", lambda: FakeLangGraphReviewClient)
+
+    toolbox = object()
+    client = OpenAILLMClient(model="gpt-test", language="en")
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Wrapped OpenAI."
+    assert calls == [
+        ("init", {"model": "gpt-test", "language": "en", "api_key": None}),
+        ("analyze", ("PR title: demo", toolbox)),
+    ]
+
+
+def test_legacy_deepseek_client_wraps_langgraph_client(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+
+    class FakeLangGraphReviewClient:
+        supports_review_tools = True
+
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(("init", kwargs))
+
+        def analyze(self, prompt: str, toolbox=None):
+            calls.append(("analyze", (prompt, toolbox)))
+            return parse_llm_output(
+                '{"summary": "Wrapped DeepSeek.", "risks": [], "suggestions": []}'
+            )
+
+    monkeypatch.setattr(llm_module, "_langgraph_review_client", lambda: FakeLangGraphReviewClient)
+
+    client = DeepSeekLLMClient(
+        model="deepseek-test",
+        language="zh",
+        api_key="deepseek-key",
+        base_url="https://deepseek.example",
+    )
+    result = client.analyze("PR title: demo")
+
+    assert result.summary == "Wrapped DeepSeek."
+    assert calls == [
+        (
+            "init",
+            {
+                "model": "deepseek-test",
+                "language": "zh",
+                "api_key": "deepseek-key",
+                "base_url": "https://deepseek.example",
+            },
+        ),
+        ("analyze", ("PR title: demo", None)),
+    ]
 
 
 def test_parse_llm_json_output() -> None:

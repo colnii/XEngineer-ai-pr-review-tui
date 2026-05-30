@@ -60,7 +60,10 @@ def test_pipeline_returns_report_with_rules_and_llm_summary() -> None:
 
 
 class MarkdownLLMClient:
-    def analyze(self, prompt: str) -> LLMResult:
+    supports_review_tools = False
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is None
         return LLMResult(
             summary="AI summary",
             risks=[

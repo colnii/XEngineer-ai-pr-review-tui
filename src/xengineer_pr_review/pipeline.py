@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol, TypeGuard
+from typing import Any, Protocol, TypeGuard
 
 from xengineer_pr_review.context import build_llm_context
 from xengineer_pr_review.diff_parser import parse_unified_diff
@@ -29,7 +29,7 @@ class GitHubReadLike(GitHubLike, Protocol):
 class LLMLike(Protocol):
     supports_review_tools: bool
 
-    def analyze(self, prompt: str): ...
+    def analyze(self, prompt: str, toolbox: Any | None = None): ...
 
 
 class ReviewPipeline:

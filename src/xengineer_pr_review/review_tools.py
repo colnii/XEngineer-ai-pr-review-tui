@@ -215,6 +215,8 @@ def _validate_relative_path(path: str) -> str:
 
 
 def _bounded_int(value: int, default: int, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        return default
     try:
         parsed = int(value)
     except (TypeError, ValueError):

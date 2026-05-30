@@ -237,6 +237,20 @@ def test_web_search_formats_configured_results() -> None:
     assert web_search.calls == [("python security advisory", 1)]
 
 
+def test_web_search_treats_boolean_max_results_as_default() -> None:
+    web_search = FakeWebSearch()
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        web_searcher=web_search,
+    )
+
+    toolbox.web_search("python security advisory", max_results=True)
+
+    assert web_search.calls == [("python security advisory", 3)]
+
+
 def test_web_search_redacts_provider_errors() -> None:
     toolbox = ReviewToolbox(
         github=FakeGitHub(files={}, tree_paths=[]),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from dataclasses import field
 import re
@@ -124,6 +125,56 @@ class MockLLMClient:
                 )
             ],
         )
+
+
+class OpenAILLMClient:
+    """Compatibility wrapper for callers that imported the pre-LangGraph client."""
+
+    supports_review_tools = True
+
+    def __init__(
+        self,
+        model: str = "gpt-4.1-mini",
+        language: str = "zh",
+        api_key: str | None = None,
+    ) -> None:
+        self._client = _langgraph_review_client()(
+            model=model,
+            language=language,
+            api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+        )
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        return self._client.analyze(prompt, toolbox=toolbox)
+
+
+class DeepSeekLLMClient:
+    """Compatibility wrapper for callers that imported the pre-LangGraph client."""
+
+    supports_review_tools = True
+
+    def __init__(
+        self,
+        model: str | None = None,
+        language: str = "zh",
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        self._client = _langgraph_review_client()(
+            model=model or os.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL,
+            language=language,
+            api_key=api_key or os.environ.get("DEEPSEEK_API_KEY"),
+            base_url=base_url or os.environ.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL,
+        )
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        return self._client.analyze(prompt, toolbox=toolbox)
+
+
+def _langgraph_review_client():
+    from xengineer_pr_review.langgraph_agent import LangGraphReviewClient
+
+    return LangGraphReviewClient
 
 
 def _review_system_message(language: str) -> str:
