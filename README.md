@@ -6,6 +6,23 @@ A terminal UI for reviewing public GitHub Pull Requests with deterministic rules
 
 ## Quick Start
 
+### Judge Demo
+
+For evaluation, run the built-in deterministic demo first. It does not require
+`OPENAI_API_KEY`, `GITHUB_TOKEN`, or a live GitHub PR:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+xpr-review --judge-demo
+```
+
+The TUI opens with a demo PR URL prefilled and starts analysis automatically. Use this path
+to verify the product flow, report structure, risk signals, suggestions, and Markdown export.
+
+### Normal Local Run
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -65,7 +82,8 @@ https://github.com/Textualize/textual/pull/1
 ## Model Choice
 
 The app uses an OpenAI-compatible client when `OPENAI_API_KEY` is present. It also supports
-`--mock-llm` so the demo can run without network or quota risk.
+`--mock-llm` for deterministic local review output. For judges, `--judge-demo` is the
+zero-configuration path and does not require model or GitHub credentials.
 
 ## Context Strategy
 
@@ -80,6 +98,8 @@ Large PRs are trimmed by file count and hunk size, and omitted files are listed 
 
 ## Future Work
 
+- One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
+  backed by a small Node wrapper around the packaged Python app.
 - GitHub Action integration.
 - Optional token support for private repositories.
 - Web UI using the same review core.

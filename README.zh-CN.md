@@ -4,6 +4,23 @@
 
 ## 快速开始
 
+### 评委零配置演示
+
+评委优先运行内置稳定 demo。这个模式不需要 `OPENAI_API_KEY`、`GITHUB_TOKEN`，
+也不依赖实时 GitHub PR：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+xpr-review --judge-demo
+```
+
+TUI 会自动填入演示 PR 地址并开始分析，可直接检查产品主链路、报告结构、风险识别、
+审查建议和 Markdown 导出。
+
+### 普通本地运行
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -71,7 +88,8 @@ xpr-review --language en
 
 ## 模型选择
 
-当存在 `OPENAI_API_KEY` 时，应用使用 OpenAI 兼容客户端。也可以使用 `--mock-llm`，这样演示时不需要网络和模型额度。
+当存在 `OPENAI_API_KEY` 时，应用使用 OpenAI 兼容客户端。也可以使用 `--mock-llm`
+获得确定性的本地审查输出。评委复现优先使用 `--judge-demo`，这个路径不需要模型或 GitHub 密钥。
 
 ## 上下文策略
 
@@ -85,6 +103,8 @@ xpr-review --language en
 
 ## 后续方向
 
+- 发布轻量 npm wrapper，评委可用
+  `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - GitHub Action 集成。
 - 支持私有仓库 token。
 - 基于相同 Review Core 的 Web UI。

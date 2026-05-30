@@ -1,3 +1,5 @@
+import asyncio
+
 from xengineer_pr_review.llm import MockLLMClient
 from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
 from xengineer_pr_review.pipeline import ReviewPipeline
@@ -10,6 +12,35 @@ def test_tui_defaults_to_chinese_language() -> None:
     assert app.language == "zh"
     assert app._language_button_text() == "English"
     assert app._phase_text("Ready").startswith("状态：就绪")
+
+
+def test_tui_accepts_initial_pr_url_and_auto_analyze_flag() -> None:
+    app = ReviewTUI(
+        ReviewPipeline(llm=MockLLMClient()),
+        initial_pr_url="https://github.com/owner/repo/pull/1",
+        auto_analyze=True,
+    )
+
+    assert app.initial_pr_url == "https://github.com/owner/repo/pull/1"
+    assert app.auto_analyze is True
+
+
+def test_tui_auto_analyzes_on_mount_when_initial_url_is_set(monkeypatch) -> None:
+    app = ReviewTUI(
+        ReviewPipeline(llm=MockLLMClient()),
+        initial_pr_url="https://github.com/owner/repo/pull/1",
+        auto_analyze=True,
+    )
+    calls: list[str] = []
+
+    async def fake_analyze() -> None:
+        calls.append(app.initial_pr_url)
+
+    monkeypatch.setattr(app, "_analyze", fake_analyze)
+
+    asyncio.run(app.on_mount())
+
+    assert calls == ["https://github.com/owner/repo/pull/1"]
 
 
 def test_tui_can_switch_language_and_rerender_current_report(monkeypatch) -> None:
