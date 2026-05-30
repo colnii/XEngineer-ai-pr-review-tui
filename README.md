@@ -61,6 +61,15 @@ export OPENAI_API_KEY="..."
 xpr-review
 ```
 
+To use DeepSeek instead:
+
+```bash
+export DEEPSEEK_API_KEY="..."
+# Optional: defaults to deepseek-v4-flash.
+export DEEPSEEK_MODEL="deepseek-v4-pro"
+xpr-review
+```
+
 If GitHub anonymous API requests are rate limited, or you need to review a private
 repository PR, provide a GitHub token:
 
@@ -102,9 +111,13 @@ https://github.com/Textualize/textual/pull/1
 
 ## Model Choice
 
-The app uses an OpenAI-compatible client when `OPENAI_API_KEY` is present. It also supports
-`--mock-llm` for deterministic local review output. For judges, `--judge-demo` is the
-zero-configuration path and does not require model or GitHub credentials.
+The app uses DeepSeek when `DEEPSEEK_API_KEY` is present, otherwise it uses OpenAI when
+`OPENAI_API_KEY` is present. DeepSeek uses the OpenAI-compatible Chat Completions API with
+`https://api.deepseek.com` by default; override `DEEPSEEK_BASE_URL` only for a compatible
+gateway. `DEEPSEEK_MODEL` defaults to `deepseek-v4-flash`.
+
+The app also supports `--mock-llm` for deterministic local review output. For judges,
+`--judge-demo` is the zero-configuration path and does not require model or GitHub credentials.
 
 ## Context Strategy
 

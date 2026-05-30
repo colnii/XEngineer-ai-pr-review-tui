@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
-from xengineer_pr_review.llm import MockLLMClient, OpenAILLMClient
+from xengineer_pr_review.llm import DeepSeekLLMClient, MockLLMClient, OpenAILLMClient
 from xengineer_pr_review.locale import normalize_language
 from xengineer_pr_review.pipeline import ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
@@ -24,11 +24,14 @@ def build_pipeline(
             github=JudgeDemoGitHubClient(),
             llm=MockLLMClient(language=language),
         )
-    llm = (
-        MockLLMClient(language=language)
-        if use_mock_llm or not os.environ.get("OPENAI_API_KEY")
-        else OpenAILLMClient(language=language)
-    )
+    if use_mock_llm:
+        llm = MockLLMClient(language=language)
+    elif os.environ.get("DEEPSEEK_API_KEY"):
+        llm = DeepSeekLLMClient(language=language)
+    elif os.environ.get("OPENAI_API_KEY"):
+        llm = OpenAILLMClient(language=language)
+    else:
+        llm = MockLLMClient(language=language)
     return ReviewPipeline(github=GitHubClient(), llm=llm)
 
 

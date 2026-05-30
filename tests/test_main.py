@@ -3,7 +3,7 @@ import pytest
 import xengineer_pr_review.__main__ as main_module
 from xengineer_pr_review.__main__ import build_pipeline
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
-from xengineer_pr_review.llm import MockLLMClient
+from xengineer_pr_review.llm import DeepSeekLLMClient, MockLLMClient
 from xengineer_pr_review.models import PostedComment, ReviewReport
 
 
@@ -21,6 +21,18 @@ def test_build_pipeline_passes_language_to_mock_llm() -> None:
 
     assert isinstance(pipeline.llm, MockLLMClient)
     assert pipeline.llm.language == "en"
+
+
+def test_build_pipeline_uses_deepseek_when_deepseek_key_is_configured(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-v4-pro")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    pipeline = build_pipeline(language="en")
+
+    assert isinstance(pipeline.llm, DeepSeekLLMClient)
+    assert pipeline.llm.language == "en"
+    assert pipeline.llm.model == "deepseek-v4-pro"
 
 
 def test_build_pipeline_uses_judge_demo_fixture_when_requested() -> None:

@@ -55,6 +55,15 @@ export OPENAI_API_KEY="..."
 xpr-review
 ```
 
+如需改用 DeepSeek：
+
+```bash
+export DEEPSEEK_API_KEY="..."
+# 可选；默认是 deepseek-v4-flash。
+export DEEPSEEK_MODEL="deepseek-v4-pro"
+xpr-review
+```
+
 如果 GitHub 匿名 API 请求被限流，或需要审查私有仓库 PR，可以提供 GitHub token：
 
 ```bash
@@ -105,8 +114,13 @@ xpr-review --language en
 
 ## 模型选择
 
-当存在 `OPENAI_API_KEY` 时，应用使用 OpenAI 兼容客户端。也可以使用 `--mock-llm`
-获得确定性的本地审查输出。评委复现优先使用 `--judge-demo`，这个路径不需要模型或 GitHub 密钥。
+当存在 `DEEPSEEK_API_KEY` 时，应用优先使用 DeepSeek；否则在存在 `OPENAI_API_KEY`
+时使用 OpenAI。DeepSeek 走 OpenAI-compatible Chat Completions API（兼容 OpenAI
+聊天补全格式的接口），默认 `base_url` 是 `https://api.deepseek.com`；只有接入兼容网关时
+才需要覆盖 `DEEPSEEK_BASE_URL`。`DEEPSEEK_MODEL` 默认是 `deepseek-v4-flash`。
+
+也可以使用 `--mock-llm` 获得确定性的本地审查输出。评委复现优先使用 `--judge-demo`，
+这个路径不需要模型或 GitHub 密钥。
 
 ## 上下文策略
 
