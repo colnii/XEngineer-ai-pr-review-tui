@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from xengineer_pr_review.llm import MockLLMClient
 from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
 from xengineer_pr_review.pipeline import ReviewPipeline
@@ -166,3 +168,35 @@ def test_tui_confirm_publish_does_not_post_without_pending_confirmation(monkeypa
     assert pipeline.posts == []
     assert app.publish_confirmation_pending is True
     assert "再次点击" in statuses[-1]
+
+
+@pytest.mark.anyio
+async def test_tui_report_logs_do_not_parse_rich_markup() -> None:
+    app = ReviewTUI(ReviewPipeline(llm=MockLLMClient()))
+
+    async with app.run_test():
+        for widget_id in ("#overview", "#risks", "#suggestions", "#files", "#raw"):
+            log = app.query_one(widget_id)
+            assert log.highlight is False
+            assert log.markup is False
+
+
+def test_tui_cards_are_plain_text_for_terminal_rendering() -> None:
+    app = ReviewTUI(ReviewPipeline(llm=MockLLMClient()))
+    finding = ReviewFinding(
+        severity="low",
+        title="[not-rich] repeated title",
+        explanation="Keep [W1] literal in VSCode terminal.",
+        files=["src/example.py"],
+    )
+    suggestion = ReviewSuggestion(
+        severity="low",
+        title="[not-rich] repeated suggestion",
+        body="Keep [W2] literal in VSCode terminal.",
+        files=["src/example.py"],
+    )
+
+    assert "[b]" not in app._risk_card(finding)
+    assert "[/b]" not in app._risk_card(finding)
+    assert "[b]" not in app._suggestion_card(suggestion)
+    assert "[/b]" not in app._suggestion_card(suggestion)
