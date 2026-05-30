@@ -10,7 +10,7 @@ from typing import Protocol
 import httpx
 
 from xengineer_pr_review.context import has_review_signal
-from xengineer_pr_review.models import PullRequestRef
+from xengineer_pr_review.models import EvidenceReference, PullRequestRef
 
 
 MAX_READ_LINES = 1000
@@ -40,6 +40,7 @@ class ReviewToolbox:
         init=False,
         repr=False,
     )
+    web_sources: list[EvidenceReference] = field(default_factory=list, init=False)
 
     def read_file(self, path: str, max_lines: int = MAX_READ_LINES) -> str:
         try:
@@ -132,11 +133,20 @@ class ReviewToolbox:
             f"Web search results for: {query}",
             "Use citation id [W1], [W2], etc. in final JSON evidence for external facts.",
         ]
-        for index, result in enumerate(results[:max_results], start=1):
+        for index, result in enumerate(results[:max_results], start=len(self.web_sources) + 1):
             citation_id = f"W{index}"
             title = result.get("title") or "Untitled result"
             url = result.get("url") or ""
             content = " ".join((result.get("content") or "").split())
+            self.web_sources.append(
+                EvidenceReference(
+                    kind="web",
+                    label=citation_id,
+                    title=title,
+                    url=url,
+                    snippet=content,
+                )
+            )
             lines.append(
                 f"[{citation_id}] {title}\n"
                 f"   URL: {url}\n"

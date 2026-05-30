@@ -236,6 +236,9 @@ def test_web_search_formats_configured_results() -> None:
     assert "Example result" in result
     assert "Use citation id [W1]" in result
     assert "https://example.test/result" in result
+    assert toolbox.web_sources[0].label == "W1"
+    assert toolbox.web_sources[0].title == "Example result"
+    assert toolbox.web_sources[0].url == "https://example.test/result"
     assert web_search.calls == [("python security advisory", 1)]
 
 

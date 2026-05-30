@@ -375,6 +375,7 @@ def _risk_from_text(text: str) -> ReviewFinding:
         title=title,
         explanation=explanation,
         files=_extract_files(text),
+        evidence=_extract_evidence(text),
     )
 
 
@@ -389,6 +390,7 @@ def _suggestion_from_text(text: str) -> ReviewSuggestion:
         body=explanation,
         files=_extract_files(text),
         confidence=_confidence(_extract_labeled_value(text, "confidence")),
+        evidence=_extract_evidence(text),
     )
 
 
@@ -462,7 +464,8 @@ def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
     line_end = _int_or_none(item.get("line_end") or item.get("end_line"))
     url = _clean_text(item.get("url") or item.get("link"))
     kind_text = _clean_text(item.get("kind")).lower()
-    kind = "web" if kind_text == "web" or (not kind_text and url) else "code"
+    path = _clean_text(item.get("path") or item.get("file") or item.get("related_file"))
+    kind = "web" if kind_text == "web" or (not kind_text and url and not path) else "code"
     if line_start is not None and line_end is None:
         line_end = line_start
     if line_start is not None and line_end is not None and line_end < line_start:
@@ -470,7 +473,7 @@ def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
     return EvidenceReference(
         kind=kind,
         label=_clean_text(item.get("label") or item.get("id") or item.get("source_id")),
-        path=_clean_text(item.get("path") or item.get("file") or item.get("related_file")),
+        path=path,
         line_start=line_start,
         line_end=line_end,
         url=url,
@@ -490,7 +493,7 @@ def _int_or_none(value: Any) -> int | None:
 
 def _extract_files(text: str) -> list[str]:
     labeled_matches = re.findall(
-        r"\bFiles?\s*:\s*([^\n]+?)(?=\s+\b(?:Confidence|Severity|Type)\b\s*:|$)",
+        r"\bFiles?\s*:\s*([^\n]+?)(?=\s+\b(?:Confidence|Evidence|Citation|Citations|Sources?|Severity|Type)\b\s*:|$)",
         text,
         re.I,
     )
@@ -498,6 +501,55 @@ def _extract_files(text: str) -> list[str]:
         labeled = labeled_matches[-1].strip().rstrip(".;")
         return [item.strip("` ") for item in re.split(r"[, ]+", labeled) if item.strip("` ")]
     return [match.strip("`") for match in re.findall(r"`?[\w./-]+\.[\w-]+`?", text)]
+
+
+def _extract_evidence(text: str) -> list[EvidenceReference]:
+    labeled_matches = re.findall(
+        r"\b(?:Evidence|Citations?|Sources?)\s*:\s*([^\n]+?)(?=\s+\bConfidence\b\s*:|$)",
+        text,
+        re.I,
+    )
+    if not labeled_matches:
+        return []
+    evidence: list[EvidenceReference] = []
+    for raw_item in re.split(r"\s*;\s*", labeled_matches[-1].strip().rstrip(".;")):
+        item = raw_item.strip()
+        if not item:
+            continue
+        evidence.extend(_evidence_items_from_text(item))
+    return evidence
+
+
+def _evidence_items_from_text(text: str) -> list[EvidenceReference]:
+    items: list[EvidenceReference] = []
+    code_match = re.search(
+        r"`?(?P<path>[\w./-]+\.[\w-]+)`?:(?P<start>\d+)(?:-(?P<end>\d+))?",
+        text,
+    )
+    if code_match:
+        start = int(code_match.group("start"))
+        end = int(code_match.group("end") or start)
+        items.append(
+            EvidenceReference(
+                kind="code",
+                path=code_match.group("path").strip("`"),
+                line_start=start,
+                line_end=end,
+            )
+        )
+    web_match = re.search(
+        r"(?:\[(?P<label>[A-Za-z]\d+)\]\s*)?(?P<url>https?://[^\s;]+)",
+        text,
+    )
+    if web_match:
+        items.append(
+            EvidenceReference(
+                kind="web",
+                label=_clean_text(web_match.group("label")),
+                url=web_match.group("url").rstrip(".,)"),
+            )
+        )
+    return items
 
 
 def _extract_labeled_value(text: str, label: str) -> str:
@@ -512,7 +564,13 @@ def _leading_label(text: str) -> str:
 
 def _remove_inline_metadata(text: str) -> str:
     text = re.sub(
-        r"\bFile(?:s)?\s*:\s*[^\n]+?(?=\s+\bConfidence\b\s*:|$)",
+        r"\bFile(?:s)?\s*:\s*[^\n]+?(?=\s+\b(?:Confidence|Evidence|Citation|Citations|Sources?)\b\s*:|$)",
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"\b(?:Evidence|Citations?|Sources?)\s*:\s*[^\n]+?(?=\s+\bConfidence\b\s*:|$)",
         "",
         text,
         flags=re.I,

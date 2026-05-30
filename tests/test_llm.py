@@ -225,6 +225,64 @@ def test_parse_llm_json_output_treats_url_citation_as_web_evidence() -> None:
     assert evidence.url == "https://example.test/api-change"
 
 
+def test_parse_llm_json_output_keeps_path_and_url_citation_as_code_evidence() -> None:
+    result = parse_llm_output(
+        """
+        {
+          "summary": "Code location matters.",
+          "risks": [
+            {
+              "severity": "low",
+              "title": "Code behavior changed",
+              "explanation": "The changed line has a related source link.",
+              "citations": [
+                {
+                  "path": "src/app.py",
+                  "line": 9,
+                  "url": "https://github.com/owner/repo/blob/abc/src/app.py#L9"
+                }
+              ]
+            }
+          ],
+          "suggestions": []
+        }
+        """
+    )
+
+    evidence = result.risks[0].evidence[0]
+    assert evidence.kind == "code"
+    assert evidence.path == "src/app.py"
+    assert evidence.url == "https://github.com/owner/repo/blob/abc/src/app.py#L9"
+
+
+def test_parse_llm_markdown_output_extracts_evidence_metadata() -> None:
+    result = parse_llm_output(
+        """
+        ### Summary
+        The PR adds structured evidence.
+
+        ### Risks
+        - Low: Citation fallback can be missing. File: src/review.py. Evidence: src/review.py:12-16; [W1] https://example.test/source
+
+        ### Suggestions
+        - Test: Add coverage for markdown evidence parsing. File: tests/test_llm.py. Evidence: tests/test_llm.py:45. Confidence: high.
+        """
+    )
+
+    risk_evidence = result.risks[0].evidence
+    assert risk_evidence[0].kind == "code"
+    assert risk_evidence[0].path == "src/review.py"
+    assert risk_evidence[0].line_start == 12
+    assert risk_evidence[0].line_end == 16
+    assert risk_evidence[1].kind == "web"
+    assert risk_evidence[1].label == "W1"
+    assert risk_evidence[1].url == "https://example.test/source"
+    suggestion_evidence = result.suggestions[0].evidence[0]
+    assert suggestion_evidence.path == "tests/test_llm.py"
+    assert suggestion_evidence.line_start == 45
+    assert result.suggestions[0].confidence == "high"
+
+
 def test_parse_llm_json_output_embedded_in_markdown_fence() -> None:
     result = parse_llm_output(
         """

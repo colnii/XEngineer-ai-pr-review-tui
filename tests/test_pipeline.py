@@ -105,6 +105,24 @@ def test_pipeline_merges_ai_risks_with_rule_findings_and_sets_metadata() -> None
     assert report.llm_status == "ok"
 
 
+def test_pipeline_enriches_ai_items_with_code_evidence_permalink() -> None:
+    pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=MarkdownLLMClient())
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    ai_risk = next(finding for finding in report.findings if finding.source == "ai")
+    assert ai_risk.evidence[0].kind == "code"
+    assert ai_risk.evidence[0].path == "src/auth.py"
+    assert ai_risk.evidence[0].line_start == 1
+    assert ai_risk.evidence[0].line_end == 2
+    assert ai_risk.evidence[0].url == (
+        "https://github.com/owner/repo/blob/sha123/src/auth.py#L1-L2"
+    )
+    assert report.suggestions[0].evidence[0].url == (
+        "https://github.com/owner/repo/blob/sha123/src/auth.py#L1-L2"
+    )
+
+
 class ToolAwareLLMClient:
     supports_review_tools = True
 
@@ -128,6 +146,27 @@ class OptionalToolAwareLLMClient:
         return LLMResult(summary="AI summary without tools")
 
 
+class WebCitationLLMClient:
+    supports_review_tools = True
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is not None
+        toolbox.web_search("python security advisory", max_results=1)
+        return LLMResult(
+            summary="AI summary with web citation",
+            risks=[
+                ReviewFinding(
+                    severity="low",
+                    source="ai",
+                    title="External advisory",
+                    explanation="External docs mention a related advisory.",
+                    files=["src/auth.py"],
+                    evidence=[{"kind": "web", "label": "W1"}],
+                )
+            ],
+        )
+
+
 def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
     llm = ToolAwareLLMClient()
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=llm)
@@ -137,6 +176,26 @@ def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
     assert report.summary == "AI summary with tools"
     assert "File: src/auth.py" in llm.tool_output
     assert "1: token = 'x'" in llm.tool_output
+
+
+def test_pipeline_hydrates_web_citation_labels_from_tool_results(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "xengineer_pr_review.pipeline.default_web_searcher",
+        lambda: FakeWebSearch(),
+    )
+    pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=WebCitationLLMClient())
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    web_evidence = next(
+        reference
+        for reference in report.findings[-1].evidence
+        if reference.kind == "web"
+    )
+    assert web_evidence.label == "W1"
+    assert web_evidence.title == "Example result"
+    assert web_evidence.url == "https://example.test/result"
+    assert web_evidence.snippet == "A short result snippet."
 
 
 def test_pipeline_logs_when_tool_aware_llm_cannot_receive_tools(caplog) -> None:
@@ -168,3 +227,14 @@ def test_pipeline_posts_review_comment_from_pr_url() -> None:
 
     assert result.html_url.endswith("#issuecomment-9")
     assert github.posts == [(PullRequestRef("owner", "repo", 1), "# Report")]
+
+
+class FakeWebSearch:
+    def search(self, query: str, max_results: int) -> list[dict[str, str]]:
+        return [
+            {
+                "title": "Example result",
+                "url": "https://example.test/result",
+                "content": "A short result snippet.",
+            }
+        ]

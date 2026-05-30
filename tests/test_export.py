@@ -60,6 +60,39 @@ def test_render_markdown_contains_report_sections() -> None:
     assert "Add coverage for auth behavior." in markdown
 
 
+def test_render_markdown_links_code_evidence_when_permalink_is_available() -> None:
+    report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+        findings=[
+            ReviewFinding(
+                severity="medium",
+                source="ai",
+                title="Auth behavior changed",
+                explanation="Token handling changed.",
+                files=["src/auth.py"],
+                evidence=[
+                    {
+                        "kind": "code",
+                        "path": "src/auth.py",
+                        "line_start": 12,
+                        "line_end": 16,
+                        "url": "https://github.com/owner/repo/blob/sha/src/auth.py#L12-L16",
+                    }
+                ],
+            )
+        ],
+    )
+
+    markdown = render_markdown(report, language="en")
+
+    assert (
+        "[`src/auth.py:12-16`](https://github.com/owner/repo/blob/sha/src/auth.py#L12-L16)"
+        in markdown
+    )
+
+
 def test_render_markdown_can_render_english_report() -> None:
     report = ReviewReport(
         pr_title="Improve auth",

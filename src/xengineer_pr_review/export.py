@@ -152,6 +152,8 @@ def _format_code_evidence(reference: EvidenceReference) -> str:
         else:
             location = f"{location}:{reference.line_start}"
     text = f"`{location}`"
+    if reference.url:
+        text = f"[{text}]({reference.url})"
     if reference.snippet:
         text += f" - {reference.snippet}"
     return text
