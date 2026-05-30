@@ -102,6 +102,22 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
 
+### 真实 AI 审核验收测试
+
+仓库包含一个默认跳过的 live acceptance test，用于验证真实模型审查指定 PR 时，证据引用不会退化成
+`read_file` 404 或 `F1` 这类假路径链接。该测试会消耗模型额度并访问实时 GitHub PR，所以需要显式开启：
+
+```bash
+export DEEPSEEK_API_KEY="..."  # 或 OPENAI_API_KEY
+export XENGINEER_RUN_LIVE_AI_REVIEW_TEST=1
+export XENGINEER_LIVE_AI_REVIEW_PR_URL="https://github.com/owner/repo/pull/1"
+export XENGINEER_LIVE_AI_REVIEW_REPORT_PATH="live-ai-review.md"  # 可选，保存 Markdown 报告
+.venv/bin/python -m pytest tests/test_live_ai_review.py
+```
+
+如果本机同时配置了 DeepSeek 和 OpenAI key，应用会按正常运行规则优先使用 DeepSeek；要单独验收
+OpenAI 路径，可以在命令前临时加 `DEEPSEEK_API_KEY=`。
+
 启动后粘贴 PR 地址，例如：
 
 ```text

@@ -139,8 +139,8 @@ def _enrich_review_item_evidence(
 ) -> None:
     files_by_path = {file.path: file for file in pr.files}
     for item in [*findings, *suggestions]:
-        item.files = [_normalize_file_reference(path, file_ids) for path in item.files]
-        _hydrate_code_evidence_urls(item.evidence, pr, file_ids)
+        item.files = _normalize_item_files(item.files, file_ids, files_by_path)
+        _hydrate_code_evidence_urls(item.evidence, pr, file_ids, files_by_path)
         for path in item.files:
             if not _has_code_evidence_for_path(item.evidence, path):
                 item.evidence.extend(_code_evidence_for_path(path, files_by_path, pr))
@@ -182,6 +182,7 @@ def _hydrate_code_evidence_urls(
     evidence: list[EvidenceReference],
     pr: PullRequestData,
     file_ids: dict[str, str],
+    files_by_path: dict[str, ChangedFile],
 ) -> None:
     hydrated: list[EvidenceReference] = []
     for reference in evidence:
@@ -195,8 +196,7 @@ def _hydrate_code_evidence_urls(
             path = file_ids[path]
         elif not path and file_id:
             path = file_ids.get(file_id, "")
-        if not path:
-            hydrated.append(_without_code_snippet(reference))
+        if not path or path not in files_by_path:
             continue
         if reference.url and reference.path and reference.path not in file_ids:
             hydrated.append(_without_code_snippet(reference))
@@ -215,14 +215,24 @@ def _hydrate_code_evidence_urls(
     evidence[:] = hydrated
 
 
+def _normalize_item_files(
+    paths: list[str],
+    file_ids: dict[str, str],
+    files_by_path: dict[str, ChangedFile],
+) -> list[str]:
+    normalized: list[str] = []
+    for path in paths:
+        mapped = file_ids.get(path, path)
+        if mapped not in files_by_path or mapped in normalized:
+            continue
+        normalized.append(mapped)
+    return normalized
+
+
 def _without_code_snippet(reference: EvidenceReference) -> EvidenceReference:
     if not reference.snippet:
         return reference
     return reference.model_copy(update={"snippet": ""})
-
-
-def _normalize_file_reference(path: str, file_ids: dict[str, str]) -> str:
-    return file_ids.get(path, path)
 
 
 def _has_code_evidence_for_path(evidence: list[EvidenceReference], path: str) -> bool:

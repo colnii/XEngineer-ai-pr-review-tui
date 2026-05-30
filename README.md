@@ -112,6 +112,25 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
 
+### Live AI Review Acceptance Test
+
+The repository includes a skipped-by-default live acceptance test for validating that a
+real model review of a target PR keeps evidence references hydrated, without `read_file`
+404 warnings or fake `F1` path links. It consumes model quota and reads a live GitHub PR,
+so it must be enabled explicitly:
+
+```bash
+export DEEPSEEK_API_KEY="..."  # or OPENAI_API_KEY
+export XENGINEER_RUN_LIVE_AI_REVIEW_TEST=1
+export XENGINEER_LIVE_AI_REVIEW_PR_URL="https://github.com/owner/repo/pull/1"
+export XENGINEER_LIVE_AI_REVIEW_REPORT_PATH="live-ai-review.md"  # optional Markdown output
+.venv/bin/python -m pytest tests/test_live_ai_review.py
+```
+
+If both DeepSeek and OpenAI keys are configured, the app follows its normal provider
+priority and uses DeepSeek first. To validate the OpenAI path specifically, prefix the
+command with `DEEPSEEK_API_KEY=`.
+
 Paste a PR URL such as:
 
 ```text

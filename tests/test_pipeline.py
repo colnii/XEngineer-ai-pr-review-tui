@@ -198,6 +198,33 @@ class PathAliasLLMClient:
         )
 
 
+class UnknownPathLLMClient:
+    supports_review_tools = False
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is None
+        return LLMResult(
+            summary="AI summary with unknown path",
+            risks=[
+                ReviewFinding(
+                    severity="low",
+                    source="ai",
+                    title="Unknown path evidence",
+                    explanation="Evidence used a path that is not in the changed file index.",
+                    files=["src/autn.py"],
+                    evidence=[
+                        EvidenceReference(
+                            kind="code",
+                            path="src/autn.py",
+                            line_start=1,
+                            line_end=2,
+                        )
+                    ],
+                )
+            ],
+        )
+
+
 class OptionalToolAwareLLMClient:
     supports_review_tools = True
 
@@ -268,6 +295,16 @@ def test_pipeline_normalizes_file_id_aliases_in_paths_and_files() -> None:
     assert evidence.path == "src/auth.py"
     assert evidence.url == "https://github.com/owner/repo/blob/sha123/src/auth.py#L1-L2"
     assert evidence.snippet == ""
+
+
+def test_pipeline_does_not_hydrate_unknown_ai_paths() -> None:
+    pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=UnknownPathLLMClient())
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    finding = next(finding for finding in report.findings if finding.title == "Unknown path evidence")
+    assert finding.files == []
+    assert finding.evidence == []
 
 
 def test_pipeline_hydrates_web_citation_labels_from_tool_results(monkeypatch) -> None:
