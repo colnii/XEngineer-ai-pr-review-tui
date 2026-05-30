@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from xengineer_pr_review.action_workflow import DEFAULT_ACTION_USES, init_action_workflow
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
@@ -96,6 +98,11 @@ def write_review_output(markdown: str, output: str) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    argv = list(argv) if argv is not None else sys.argv[1:]
+    if argv and argv[0] == "init-action":
+        _main_init_action(argv[1:])
+        return
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--judge-demo",
@@ -176,6 +183,44 @@ def main(argv: Sequence[str] | None = None) -> None:
         initial_pr_url=initial_pr_url,
         auto_analyze=args.judge_demo,
     ).run()
+
+
+def _main_init_action(argv: Sequence[str]) -> None:
+    parser = argparse.ArgumentParser(prog="xpr-review init-action")
+    parser.add_argument(
+        "--repo-path",
+        default=".",
+        help="Repository path where .github/workflows/xengineer-pr-review.yml will be written",
+    )
+    parser.add_argument(
+        "--action-uses",
+        default=DEFAULT_ACTION_USES,
+        help="Action reference used in the generated workflow",
+    )
+    parser.add_argument(
+        "--language",
+        choices=("zh", "en"),
+        default="zh",
+        help="Generated workflow report language, default: zh",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite an existing xengineer-pr-review workflow file",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        workflow_path = init_action_workflow(
+            repo_path=args.repo_path,
+            action_uses=args.action_uses,
+            language=args.language,
+            overwrite=args.overwrite,
+        )
+    except (FileExistsError, NotADirectoryError) as exc:
+        parser.error(str(exc))
+
+    print(f"Wrote GitHub Actions workflow: {workflow_path}")
 
 
 if __name__ == "__main__":

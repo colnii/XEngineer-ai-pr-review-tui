@@ -39,6 +39,8 @@ xpr-review
 - 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
 - 支持 Markdown 报告导出。
 - 支持人工确认后发布 PR 顶层 Conversation 评论。
+- 支持作为 GitHub Action 集成到其他仓库，在 PR 创建、重新打开或标记 ready for review
+  后自动发布一条顶层 Conversation 评论。
 - 默认中文界面，可切换英文。
 
 ## 使用方式
@@ -116,6 +118,53 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 ```
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
+
+### GitHub Actions 集成
+
+如果希望其他 GitHub 仓库在 PR 后自动调用 XEngineer，在目标仓库新增
+`.github/workflows/xengineer-pr-review.yml`：
+
+```yaml
+name: XEngineer PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - name: Run XEngineer PR review
+        uses: colnii/XEngineer-ai-pr-review-tui@main
+        with:
+          pr-url: ${{ github.event.pull_request.html_url }}
+          github-token: ${{ github.token }}
+          language: zh
+          deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          tavily-api-key: ${{ secrets.TAVILY_API_KEY }}
+```
+
+默认 workflow 只在 PR 创建、重新打开、从 draft 变成 ready for review 时发一条新的
+PR Conversation 评论；它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发。
+如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
+没有模型 key 时，CLI 会按现有规则回退到确定性的 mock 输出。
+
+安装 CLI 后，也可以不用手写 YAML，直接生成同样的 workflow：
+
+```bash
+xpr-review init-action --repo-path /path/to/target/repo
+```
+
+如果命令就在目标仓库里执行，可以省略 `--repo-path`。如果要指向 fork、分支或发布版本，
+用 `--action-uses owner/repo@ref`；只有确认要替换已有文件时才加 `--overwrite`。
 
 ### 真实 AI 审核验收测试
 
@@ -207,7 +256,8 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 ## 限制
 
 - 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。
-- PR 评论只支持手动发布：TUI 会要求人工确认后，才发布顶层 Conversation 评论。
+- GitHub Action 只发布顶层 PR Conversation 评论。默认生成的 workflow 每次触发都会发一条新评论，
+  不会编辑旧的 XEngineer 评论。
 - 暂不支持行内 review comment，也不支持 approve/request-changes review 状态。
 - 没有仓库级语义索引。
 - 工具调用有轮数和输出限制；如果模型触达限制或工具失败，报告会显示 warning。
@@ -216,7 +266,6 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 
 - 发布轻量 npm wrapper，评委可用
   `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
-- GitHub Action 集成。
 - 基于相同 Review Core 的 Web UI。
 - 支持 PR review 模式，在完成 GitHub 行内评论 position 映射后发布可选行内评论。
 - 可配置的组织级审查规则。
