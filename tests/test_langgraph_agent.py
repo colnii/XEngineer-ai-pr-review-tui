@@ -249,6 +249,8 @@ def test_langgraph_review_client_prompt_requires_structured_evidence() -> None:
     assert "url" in system_message
     assert "Do not include snippets for code evidence" in system_message
     assert "Use web_search result ids like W1" in system_message
+    assert "must call web_search before finalizing" in system_message
+    assert "external API endpoints" in system_message
 
 
 def test_web_search_tool_defaults_to_five_results() -> None:

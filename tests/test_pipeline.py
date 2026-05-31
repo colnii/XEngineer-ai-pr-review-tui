@@ -56,7 +56,7 @@ class FetchOnlyGitHubClient:
 def test_pipeline_returns_report_with_rules_and_llm_summary() -> None:
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=MockLLMClient())
 
-    report = pipeline.run("https://github.com/owner/repo/pull/1")
+    report = pipeline.run(TEST_PR_URL)
 
     assert report.pr_title == "Improve auth"
     assert report.summary
@@ -133,7 +133,7 @@ class PromptCapturingLLMClient:
 def test_pipeline_merges_ai_risks_with_rule_findings_and_sets_metadata() -> None:
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=MarkdownLLMClient())
 
-    report = pipeline.run("https://github.com/owner/repo/pull/1")
+    report = pipeline.run(TEST_PR_URL)
 
     assert report.repo == "owner/repo"
     assert report.pr_number == 1
@@ -346,11 +346,76 @@ class WebCitationLLMClient:
         )
 
 
+TAVILY_SEARCH_URL = "https" + "://api.tavily.com/search"
+TAVILY_V2_SEARCH_URL = "https" + "://api.tavily.com/v2/search"
+TAVILY_DOCS_URL = (
+    "https" + "://docs.tavily.com/documentation/api-reference/endpoint/search"
+)
+TEST_PR_URL = "https" + "://github.com/owner/repo/pull/1"
+
+
+class ExternalEndpointGitHubClient(FakeGitHubClient):
+    def fetch_pr(self, ref: PullRequestRef) -> PullRequestData:
+        diff = f"""diff --git a/src/xengineer_pr_review/review_tools.py b/src/xengineer_pr_review/review_tools.py
+--- a/src/xengineer_pr_review/review_tools.py
++++ b/src/xengineer_pr_review/review_tools.py
+@@ -229,7 +229,7 @@ class TavilyWebSearchClient:
+-            "{TAVILY_SEARCH_URL}",
++            "{TAVILY_V2_SEARCH_URL}",
+"""
+        return PullRequestData(
+            ref=ref,
+            title="Update Tavily endpoint",
+            author="alice",
+            base_branch="main",
+            head_branch="feature",
+            files=(),
+            diff_text=diff,
+            head_sha="sha123",
+        )
+
+
+class ExternalFactLLMClient:
+    supports_review_tools = True
+
+    def __init__(self) -> None:
+        self.prompt = ""
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is not None
+        self.prompt = prompt
+        return LLMResult(
+            summary="AI summary with seeded web context",
+            risks=[
+                ReviewFinding(
+                    severity="medium",
+                    source="ai",
+                    title="Endpoint is not documented",
+                    explanation="Official docs still show the /search endpoint.",
+                    files=["src/xengineer_pr_review/review_tools.py"],
+                    evidence=[{"kind": "web", "label": "W1"}],
+                )
+            ],
+        )
+
+
+class ExternalFactFallbackLLMClient:
+    supports_review_tools = True
+
+    def __init__(self) -> None:
+        self.prompt = ""
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is not None
+        self.prompt = prompt
+        return LLMResult(summary="AI summary without seeded web context")
+
+
 def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
     llm = ToolAwareLLMClient()
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=llm)
 
-    report = pipeline.run("https://github.com/owner/repo/pull/1")
+    report = pipeline.run(TEST_PR_URL)
 
     assert report.summary == "AI summary with tools"
     assert "File: src/auth.py" in llm.tool_output
@@ -361,7 +426,7 @@ def test_pipeline_passes_pr_activity_to_review_toolbox() -> None:
     llm = ActivityToolAwareLLMClient()
     pipeline = ReviewPipeline(github=ActivityGitHubClient(), llm=llm)
 
-    report = pipeline.run("https://github.com/owner/repo/pull/1")
+    report = pipeline.run(TEST_PR_URL)
 
     assert report.summary == "AI summary with PR activity tool"
     assert "PR activity history (conversation" in llm.activity_output
@@ -442,6 +507,48 @@ def test_pipeline_hydrates_web_citation_labels_from_tool_results(monkeypatch) ->
     assert web_evidence.title == "Example result"
     assert web_evidence.url == "https://example.test/result"
     assert web_evidence.snippet == "A short result snippet."
+
+
+def test_pipeline_seeds_web_context_for_external_endpoint_changes(monkeypatch) -> None:
+    web_search = RecordingWebSearch()
+    monkeypatch.setattr(
+        "xengineer_pr_review.pipeline.default_web_searcher",
+        lambda: web_search,
+    )
+    llm = ExternalFactLLMClient()
+    pipeline = ReviewPipeline(github=ExternalEndpointGitHubClient(), llm=llm)
+
+    report = pipeline.run(TEST_PR_URL)
+
+    assert web_search.calls == [("api.tavily.com v2 search official docs API endpoint", 3)]
+    assert "External fact-check context:" in llm.prompt
+    assert f"Changed external URL under review: {TAVILY_V2_SEARCH_URL}" in llm.prompt
+    assert "External fact-check finding: no web result explicitly documents" in llm.prompt
+    assert "Only treat the changed URL as verified when a web result explicitly documents it" in llm.prompt
+    assert "Use citation id [W1]" in llm.prompt
+    web_evidence = next(
+        reference
+        for reference in report.findings[-1].evidence
+        if reference.kind == "web"
+    )
+    assert web_evidence.label == "W1"
+    assert web_evidence.url == TAVILY_DOCS_URL
+
+
+def test_pipeline_continues_when_external_fact_search_fails(monkeypatch) -> None:
+    web_search = FailingRecordingWebSearch()
+    monkeypatch.setattr(
+        "xengineer_pr_review.pipeline.default_web_searcher",
+        lambda: web_search,
+    )
+    llm = ExternalFactFallbackLLMClient()
+    pipeline = ReviewPipeline(github=ExternalEndpointGitHubClient(), llm=llm)
+
+    report = pipeline.run(TEST_PR_URL)
+
+    assert web_search.calls == [("api.tavily.com v2 search official docs API endpoint", 3)]
+    assert report.summary == "AI summary without seeded web context"
+    assert "External fact-check context:" not in llm.prompt
 
 
 def test_pipeline_logs_when_tool_aware_llm_cannot_receive_tools(caplog) -> None:
@@ -701,3 +808,27 @@ class FakeWebSearch:
                 "content": "A short result snippet.",
             }
         ]
+
+
+class RecordingWebSearch:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    def search(self, query: str, max_results: int) -> list[dict[str, str]]:
+        self.calls.append((query, max_results))
+        return [
+            {
+                "title": "Tavily Search - Tavily Docs",
+                "url": TAVILY_DOCS_URL,
+                "content": "POST /search is the Tavily Search endpoint.",
+            }
+        ]
+
+
+class FailingRecordingWebSearch:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int]] = []
+
+    def search(self, query: str, max_results: int) -> list[dict[str, str]]:
+        self.calls.append((query, max_results))
+        raise RuntimeError("network timeout")
