@@ -18,6 +18,7 @@ MAX_READ_LINES = 1000
 MAX_GREP_FILES = 40
 MAX_GREP_RESULTS = 20
 MAX_CACHED_FILES = 40
+DEFAULT_PR_ACTIVITY_TOOL_ITEMS = 200
 MAX_PR_ACTIVITY_TOOL_ITEMS = 300
 
 
@@ -162,7 +163,11 @@ class ReviewToolbox:
             matches.append(_skipped_files_message(skipped_files))
         return "\n".join(matches)
 
-    def read_pr_activity(self, kind: str = "all", max_items: int = 100) -> str:
+    def read_pr_activity(
+        self,
+        kind: str = "all",
+        max_items: int = DEFAULT_PR_ACTIVITY_TOOL_ITEMS,
+    ) -> str:
         normalized_kind = str(kind or "all").strip().lower()
         allowed_kinds = {"all", "commit", "conversation", "review", "inline", "event"}
         if normalized_kind not in allowed_kinds:
@@ -172,7 +177,7 @@ class ReviewToolbox:
             )
         max_items = _bounded_int(
             max_items,
-            default=100,
+            default=DEFAULT_PR_ACTIVITY_TOOL_ITEMS,
             minimum=1,
             maximum=MAX_PR_ACTIVITY_TOOL_ITEMS,
         )

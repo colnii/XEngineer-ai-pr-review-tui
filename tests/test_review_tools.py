@@ -318,6 +318,26 @@ def test_read_pr_activity_filters_and_formats_activity_history() -> None:
     assert "Please rerun after the latest push." not in result
 
 
+def test_read_pr_activity_defaults_to_initial_context_item_budget() -> None:
+    activities = tuple(
+        PullRequestActivity(kind="commit", author="alice", body=f"commit {index}")
+        for index in range(201)
+    )
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        activities=activities,
+    )
+
+    result = toolbox.read_pr_activity()
+
+    assert "showing 200 of 201 items" in result
+    assert "commit 199" in result
+    assert "commit 200" not in result
+    assert "truncated 1 additional PR activity items" in result
+
+
 def test_web_search_reports_unavailable_when_not_configured() -> None:
     toolbox = ReviewToolbox(
         github=FakeGitHub(files={}, tree_paths=[]),

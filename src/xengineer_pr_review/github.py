@@ -26,6 +26,8 @@ MAX_COMMENT_BODY_CHARS = 65_536
 MAX_PR_ACTIVITY_ITEMS_PER_KIND = 300
 COMMENT_TRUNCATION_NOTICE = "\n\n[Report truncated by XEngineer before publishing to GitHub.]"
 LOGGER = logging.getLogger(__name__)
+# Timeline events that are already represented by the dedicated commits,
+# conversation comments, review bodies, and inline review comments endpoints.
 DUPLICATED_TIMELINE_EVENTS = {"commented", "committed", "line-commented", "reviewed"}
 
 

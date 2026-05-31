@@ -154,6 +154,28 @@ def test_langgraph_review_client_dispatches_pr_activity_tool() -> None:
     assert toolbox.calls == [("read_pr_activity", "conversation", 2)]
 
 
+def test_langgraph_review_client_dispatches_pr_activity_tool_with_context_budget_default() -> None:
+    completions = FakeChatCompletions(
+        [
+            _tool_call_message("call-1", "read_pr_activity", {}),
+            _assistant_message(
+                '{"summary": "Read PR activity.", "risks": [], "suggestions": []}'
+            ),
+        ]
+    )
+    toolbox = FakeToolbox()
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        chat_completions=completions,
+    )
+
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Read PR activity."
+    assert toolbox.calls == [("read_pr_activity", "all", 200)]
+
+
 def test_langgraph_review_client_does_not_warn_on_file_content_with_error_word() -> None:
     completions = FakeChatCompletions(
         [

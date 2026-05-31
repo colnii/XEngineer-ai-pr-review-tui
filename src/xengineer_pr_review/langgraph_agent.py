@@ -247,7 +247,7 @@ def _dispatch_tool_call(toolbox: Any | None, call: dict[str, Any]) -> str:
     if name == "read_pr_activity":
         return toolbox.read_pr_activity(
             kind=str(arguments.get("kind", "all")),
-            max_items=_int_argument(arguments, "max_items", 100),
+            max_items=_int_argument(arguments, "max_items", 200),
         )
     if name == "web_search":
         return toolbox.web_search(
