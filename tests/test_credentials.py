@@ -1,3 +1,5 @@
+import stat
+
 from xengineer_pr_review.credentials import (
     CredentialStatus,
     read_credential_status,
@@ -57,6 +59,7 @@ def test_save_runtime_credentials_creates_local_dotenv(tmp_path, monkeypatch) ->
         "TAVILY_API_KEY=tavily-key",
         "GITHUB_TOKEN=github-token",
     ]
+    assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
 
 
 def test_save_runtime_credentials_updates_existing_dotenv(tmp_path, monkeypatch) -> None:

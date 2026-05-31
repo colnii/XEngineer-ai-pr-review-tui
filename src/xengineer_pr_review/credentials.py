@@ -80,6 +80,7 @@ def save_runtime_credentials(
     existing_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
     updated_lines = _updated_dotenv_lines(existing_lines, clean_values)
     env_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    os.chmod(env_path, 0o600)
     return env_path
 
 

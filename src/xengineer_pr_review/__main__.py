@@ -254,12 +254,15 @@ def _run_main(argv: Sequence[str]) -> None:
                 file=sys.stderr,
             )
             pipeline = None
+            use_mock_llm = args.mock_llm
+            language = args.language
+            judge_demo = args.judge_demo
 
             def build_tui_pipeline() -> ReviewPipeline:
                 return build_pipeline(
-                    use_mock_llm=args.mock_llm,
-                    language=args.language,
-                    judge_demo=args.judge_demo,
+                    use_mock_llm=use_mock_llm,
+                    language=language,
+                    judge_demo=judge_demo,
                 )
 
             pipeline_factory = build_tui_pipeline

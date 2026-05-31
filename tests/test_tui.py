@@ -164,9 +164,12 @@ async def test_tui_keeps_setup_required_when_saved_key_cannot_build_pipeline(
     async with app.run_test():
         app.query_one("#setup-model-key", Input).value = "deepseek-key"
         app._save_credentials("deepseek")
+        status_text = app.query_one("#status", Static).content
 
     assert app.pipeline is None
     assert app.credentials_required is True
+    assert "凭据已保存" in status_text
+    assert "保存凭据失败" not in status_text
 
 
 @pytest.mark.anyio

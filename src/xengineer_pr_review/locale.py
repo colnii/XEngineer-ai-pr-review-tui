@@ -65,6 +65,10 @@ LABELS: dict[str, dict[Language, str]] = {
         "zh": "保存凭据失败",
         "en": "Failed to save credentials",
     },
+    "status.credentials_pipeline_failed": {
+        "zh": "凭据已保存，但管道构建失败",
+        "en": "Credentials saved, but pipeline setup failed",
+    },
     "setup.title": {"zh": "首次配置：缺少必需模型 API Key", "en": "First-run setup: model API key missing"},
     "setup.required": {
         "zh": "DeepSeek 和 OpenAI 二选一即可；TUI 会保存到本地 .env，后续 CLI/TUI 会自动加载。",

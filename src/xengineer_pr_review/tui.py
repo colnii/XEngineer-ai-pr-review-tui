@@ -217,11 +217,7 @@ class ReviewTUI(App):
             env_path = self.credential_writer(values)
             os.environ.update(values)
             self.credential_status = read_credential_status()
-            if not self._ensure_pipeline_ready():
-                raise RuntimeError(label("status.model_key_required", self.language))
-            self.credentials_required = False
         except Exception as exc:
-            self.credentials_required = self.pipeline is None
             self._update_status(f"{label('status.credentials_save_failed', self.language)}: {exc}")
             return
 
@@ -229,6 +225,22 @@ class ReviewTUI(App):
             f"{label('status.credentials_saved', self.language)}: {env_path}\n"
             f"{provider_key} configured."
         )
+        try:
+            pipeline_ready = self._ensure_pipeline_ready()
+        except Exception as exc:
+            self.credentials_required = self.pipeline is None
+            self._update_setup_text(self.setup_status_text)
+            self._update_status(
+                f"{label('status.credentials_pipeline_failed', self.language)}: {exc}"
+            )
+            return
+        if not pipeline_ready:
+            self.credentials_required = True
+            self._update_setup_text(self.setup_status_text)
+            self._update_status(label("status.credentials_pipeline_failed", self.language))
+            return
+
+        self.credentials_required = False
         self._update_setup_text(self.setup_status_text)
         self._update_status(label("status.ready", self.language))
 
