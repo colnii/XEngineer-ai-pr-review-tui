@@ -240,6 +240,25 @@ def test_fetch_pr_includes_pull_request_activity(monkeypatch) -> None:
     assert pr.activities[3].line == 57
 
 
+def test_fetch_pr_continues_when_one_activity_endpoint_fails(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    caplog.set_level("WARNING")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100":
+            return httpx.Response(403, json={"message": "rate limited"})
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert pr.title == "Demo PR"
+    assert pr.activities == ()
+    assert "Failed to fetch PR conversation comments" in caplog.text
+
+
 def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "write-token")
     requests: list[tuple[str, str | None, dict]] = []
@@ -323,6 +342,49 @@ def test_post_pr_review_can_request_changes(monkeypatch) -> None:
 
     assert result.html_url.endswith("#pullrequestreview-10")
     assert requests == [{"body": "# Report", "event": "REQUEST_CHANGES"}]
+
+
+def test_post_pr_review_can_approve(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-11"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(
+        PullRequestRef("owner", "repo", 1),
+        "# Report",
+        review_action="approve",
+    )
+
+    assert result.html_url.endswith("#pullrequestreview-11")
+    assert requests == [{"body": "# Report", "event": "APPROVE"}]
+
+
+def test_post_pr_review_truncates_oversized_body(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    client.post_pr_review(PullRequestRef("owner", "repo", 1), "a" * 70_000)
+
+    body = requests[0]["body"]
+    assert len(body) <= 65_536
+    assert "truncated by XEngineer" in body
 
 
 def test_fetch_file_text_reads_content_at_requested_ref(monkeypatch) -> None:

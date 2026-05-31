@@ -141,7 +141,8 @@ Review mode defaults to a non-blocking `COMMENT` review. To intentionally submit
 an approval or a blocking change request, add `--review-action approve` or
 `--review-action request-changes`. These actions can affect branch protection on
 repositories that require reviews, so keep the default unless the automation is
-trusted for merge gating.
+trusted for merge gating. Review mode requires `Pull requests: write`; conversation
+comment mode requires `Issues: write` or `Pull requests: write`.
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
 In non-interactive automation, `--auto-publish` can be used instead of
@@ -196,7 +197,8 @@ opened, reopened, moved out of draft, or after someone comments `/xengineer revi
 on the PR page. Set `comment-mode: review` to publish the report as a pull request
 review body instead; `review-action` defaults to `comment`, with `approve` and
 `request-changes` available for explicit merge-gating workflows. It does not edit
-older bot comments and does not run on every pushed commit unless that command comment is added. Configure `DEEPSEEK_API_KEY` or
+older bot comments and does not run on every pushed commit unless that command comment is added.
+Keep `pull-requests: write` in the workflow permissions when using review mode. Configure `DEEPSEEK_API_KEY` or
 `OPENAI_API_KEY` as a repository secret for real model output; without a model
 key, the CLI falls back to deterministic mock output.
 

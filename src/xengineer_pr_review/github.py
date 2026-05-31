@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import os
 import re
 import subprocess
@@ -20,6 +21,7 @@ from xengineer_pr_review.models import (
 
 
 MAX_FILE_CONTENT_BYTES = 1_000_000
+LOGGER = logging.getLogger(__name__)
 
 
 class GitHubClient:
@@ -59,12 +61,26 @@ class GitHubClient:
         )
 
     def fetch_pr_activities(self, ref: PullRequestRef) -> list[PullRequestActivity]:
-        return [
-            *self._fetch_commit_activities(ref),
-            *self._fetch_conversation_activities(ref),
-            *self._fetch_review_activities(ref),
-            *self._fetch_inline_comment_activities(ref),
-        ]
+        activities: list[PullRequestActivity] = []
+        activity_fetchers = (
+            ("commits", self._fetch_commit_activities),
+            ("conversation comments", self._fetch_conversation_activities),
+            ("reviews", self._fetch_review_activities),
+            ("inline comments", self._fetch_inline_comment_activities),
+        )
+        for activity_name, fetcher in activity_fetchers:
+            try:
+                activities.extend(fetcher(ref))
+            except httpx.HTTPError as exc:
+                LOGGER.warning(
+                    "Failed to fetch PR %s for %s/%s#%s: %s",
+                    activity_name,
+                    ref.owner,
+                    ref.repo,
+                    ref.number,
+                    exc,
+                )
+        return activities
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/issues/{ref.number}/comments"
