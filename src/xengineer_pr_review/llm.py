@@ -560,7 +560,9 @@ def _evidence_items_from_text(text: str) -> list[EvidenceReference]:
             items.append(EvidenceReference(kind="pr_activity", label=label, url=url))
         elif url:
             items.append(EvidenceReference(kind="web", label=label, url=url))
-    if not any(reference.kind == "web" and reference.url for reference in items):
+    if not any(
+        reference.kind in {"web", "pr_activity"} and reference.url for reference in items
+    ):
         web_match = re.search(r"(?P<url>https?://[^\s;]+)", text)
     else:
         web_match = None

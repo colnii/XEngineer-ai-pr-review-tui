@@ -310,6 +310,24 @@ def test_parse_llm_markdown_output_extracts_evidence_metadata() -> None:
     assert result.suggestions[0].confidence == "high"
 
 
+def test_parse_llm_markdown_pr_activity_url_does_not_duplicate_as_web_evidence() -> None:
+    result = parse_llm_output(
+        """
+        ### Summary
+        The PR cites prior activity.
+
+        ### Risks
+        - Low: Prior comment applies. Evidence: [A2] https://github.com/owner/repo/pull/1#issuecomment-10
+        """
+    )
+
+    evidence = result.risks[0].evidence
+    assert len(evidence) == 1
+    assert evidence[0].kind == "pr_activity"
+    assert evidence[0].label == "A2"
+    assert evidence[0].url == "https://github.com/owner/repo/pull/1#issuecomment-10"
+
+
 def test_parse_llm_json_output_embedded_in_markdown_fence() -> None:
     result = parse_llm_output(
         """
