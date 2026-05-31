@@ -13,6 +13,7 @@ Confidence = Literal["high", "medium", "low"]
 EvidenceKind = Literal["code", "web"]
 PullRequestActivityKind = Literal["commit", "conversation", "review", "inline"]
 ReviewAction = Literal["comment", "approve", "request-changes"]
+ReviewCommentSide = Literal["LEFT", "RIGHT"]
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,18 @@ class PostedComment:
     html_url: str
 
 
+@dataclass(frozen=True)
+class InlineReviewComment:
+    """Line-level PR review comment payload for GitHub's review comments array."""
+
+    path: str
+    body: str
+    line: int
+    side: ReviewCommentSide = "RIGHT"
+    start_line: int | None = None
+    start_side: ReviewCommentSide | None = None
+
+
 class EvidenceReference(BaseModel):
     kind: EvidenceKind = "code"
     file_id: str = ""
@@ -98,6 +111,7 @@ class ReviewReport(BaseModel):
     pr_url: str
     repo: str = ""
     pr_number: int | None = None
+    head_sha: str = ""
     author: str = ""
     additions: int = 0
     deletions: int = 0

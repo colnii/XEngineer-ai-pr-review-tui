@@ -19,7 +19,7 @@ from xengineer_pr_review.locale import (
     translate_builtin_text,
 )
 from xengineer_pr_review.models import EvidenceReference, ReviewFinding, ReviewReport, ReviewSuggestion
-from xengineer_pr_review.pipeline import ReviewPipeline
+from xengineer_pr_review.pipeline import CommentMode, ReviewPipeline
 
 
 class ReviewTUI(App):
@@ -28,6 +28,8 @@ class ReviewTUI(App):
     #toolbar { height: auto; margin-bottom: 1; }
     #pr-url { width: 1fr; margin-right: 1; }
     #analyze { margin-right: 1; }
+    #comment-mode { margin-left: 1; }
+    #inline-comments { margin-left: 1; }
     #main { height: 1fr; }
     #workspace { width: 1fr; }
     #status { height: auto; margin-bottom: 1; border: solid $primary; padding: 1; }
@@ -50,6 +52,8 @@ class ReviewTUI(App):
         self.last_markdown: str | None = None
         self.last_report: ReviewReport | None = None
         self.publish_confirmation_pending = False
+        self.comment_mode: CommentMode = "conversation"
+        self.inline_comments_enabled = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -62,6 +66,8 @@ class ReviewTUI(App):
                 )
                 yield Button(label("button.analyze", self.language), id="analyze", variant="primary")
                 yield Button(label("button.export", self.language), id="export")
+                yield Button(self._comment_mode_button_text(), id="comment-mode")
+                yield Button(self._inline_comments_button_text(), id="inline-comments")
                 yield Button(label("button.publish", self.language), id="publish")
                 yield Button(self._language_button_text(), id="language")
             with Horizontal(id="main"):
@@ -93,9 +99,13 @@ class ReviewTUI(App):
             self._export()
         elif event.button.id == "publish":
             if self.publish_confirmation_pending:
-                self._confirm_publish()
+                await self._confirm_publish()
             else:
                 self._request_publish_confirmation()
+        elif event.button.id == "comment-mode":
+            self._toggle_comment_mode()
+        elif event.button.id == "inline-comments":
+            self._toggle_inline_comments()
         elif event.button.id == "language":
             self._set_language("en" if self.language == "zh" else "zh")
 
@@ -134,11 +144,18 @@ class ReviewTUI(App):
     def _update_status(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
 
-    def _set_publish_button_label(self, text: str) -> None:
+    def _set_button_label(self, widget_id: str, text: str) -> None:
         try:
-            self.query_one("#publish", Button).label = text
+            self.query_one(widget_id, Button).label = text
         except (NoMatches, ScreenStackError):
             return
+
+    def _set_publish_button_label(self, text: str) -> None:
+        self._set_button_label("#publish", text)
+
+    def _update_publish_option_labels(self) -> None:
+        self._set_button_label("#comment-mode", self._comment_mode_button_text())
+        self._set_button_label("#inline-comments", self._inline_comments_button_text())
 
     def _reset_publish_confirmation(self) -> None:
         self.publish_confirmation_pending = False
@@ -150,9 +167,9 @@ class ReviewTUI(App):
             return
         self.publish_confirmation_pending = True
         self._set_publish_button_label(label("button.confirm_publish", self.language))
-        self._update_status(label("status.publish_confirm", self.language))
+        self._update_status(self._publish_confirmation_text())
 
-    def _confirm_publish(self) -> None:
+    async def _confirm_publish(self) -> None:
         if not self.publish_confirmation_pending:
             self._request_publish_confirmation()
             return
@@ -162,10 +179,7 @@ class ReviewTUI(App):
             return
         self._update_status(label("status.publishing", self.language))
         try:
-            posted = self.pipeline.post_review_comment(
-                self.last_report.pr_url,
-                self.last_markdown,
-            )
+            posted = await self._post_current_review_comment()
         except Exception as exc:
             self._reset_publish_confirmation()
             self._update_status(f"{label('status.publish_failed', self.language)}: {exc}")
@@ -173,8 +187,67 @@ class ReviewTUI(App):
         self._reset_publish_confirmation()
         self._update_status(f"{label('status.published', self.language)}: {posted.html_url}")
 
+    async def _post_current_review_comment(self):
+        assert self.last_report is not None
+        assert self.last_markdown is not None
+
+        def post():
+            return self.pipeline.post_review_comment(
+                self.last_report.pr_url,
+                self.last_markdown,
+                comment_mode=self.comment_mode,
+                review_action="comment",
+                include_inline_comments=self.inline_comments_enabled,
+                report=self.last_report,
+            )
+
+        if self.is_running:
+            return await self.run_worker(post, thread=True, exclusive=True).wait()
+        return post()
+
     def _language_button_text(self) -> str:
         return "English" if self.language == "zh" else "中文"
+
+    def _comment_mode_button_text(self) -> str:
+        key = (
+            "button.comment_mode_review"
+            if self.comment_mode == "review"
+            else "button.comment_mode_conversation"
+        )
+        return label(key, self.language)
+
+    def _inline_comments_button_text(self) -> str:
+        key = (
+            "button.inline_comments_on"
+            if self.inline_comments_enabled
+            else "button.inline_comments_off"
+        )
+        return label(key, self.language)
+
+    def _toggle_comment_mode(self) -> None:
+        if self.comment_mode == "conversation":
+            self.comment_mode = "review"
+        else:
+            self.comment_mode = "conversation"
+            self.inline_comments_enabled = False
+        self._reset_publish_confirmation()
+        self._update_publish_option_labels()
+
+    def _toggle_inline_comments(self) -> None:
+        if self.comment_mode != "review":
+            self.comment_mode = "review"
+            self.inline_comments_enabled = True
+        else:
+            self.inline_comments_enabled = not self.inline_comments_enabled
+        self._reset_publish_confirmation()
+        self._update_publish_option_labels()
+
+    def _publish_confirmation_text(self) -> str:
+        if self.comment_mode == "review" and self.inline_comments_enabled:
+            return label("status.publish_confirm_review_inline", self.language)
+        if self.comment_mode == "review":
+            return label("status.publish_confirm_review", self.language)
+        return label("status.publish_confirm", self.language)
 
     def _set_language(self, language: str) -> None:
         self.language = normalize_language(language)
@@ -190,6 +263,7 @@ class ReviewTUI(App):
         self.query_one("#analyze", Button).label = label("button.analyze", self.language)
         self.query_one("#export", Button).label = label("button.export", self.language)
         self.query_one("#publish", Button).label = label("button.publish", self.language)
+        self._update_publish_option_labels()
         self.query_one("#language", Button).label = self._language_button_text()
         self.query_one("#status", Static).update(
             self._phase_text("Complete" if self.last_report else "Ready")

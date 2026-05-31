@@ -14,6 +14,8 @@ def test_action_metadata_runs_xpr_review_publish_comment() -> None:
     assert "inputs.comment-mode" in metadata
     assert "--review-action" in metadata
     assert "inputs.review-action" in metadata
+    assert "--inline-comments" in metadata
+    assert "inputs.inline-comments" in metadata
     assert "--auto-publish" in metadata
     assert "--confirm-publish" not in metadata
     assert "mock-llm" not in metadata

@@ -3,14 +3,16 @@ import pytest
 from xengineer_pr_review.llm import LLMResult, MockLLMClient
 from xengineer_pr_review.models import (
     EvidenceReference,
+    InlineReviewComment,
     PostedComment,
     PullRequestActivity,
     PullRequestData,
     PullRequestRef,
     ReviewFinding,
+    ReviewReport,
     ReviewSuggestion,
 )
-from xengineer_pr_review.pipeline import ReviewPipeline
+from xengineer_pr_review.pipeline import ReviewPipeline, build_inline_review_comments
 
 
 class FakeGitHubClient:
@@ -273,6 +275,33 @@ class UnknownPathLLMClient:
         )
 
 
+class OutOfRangeEvidenceLLMClient:
+    supports_review_tools = False
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is None
+        return LLMResult(
+            summary="AI summary with out-of-range evidence",
+            risks=[
+                ReviewFinding(
+                    severity="low",
+                    source="ai",
+                    title="Out-of-range evidence",
+                    explanation="Evidence line is not in the changed diff hunk.",
+                    files=["src/auth.py"],
+                    evidence=[
+                        EvidenceReference(
+                            kind="code",
+                            path="src/auth.py",
+                            line_start=99,
+                            line_end=100,
+                        )
+                    ],
+                )
+            ],
+        )
+
+
 class OptionalToolAwareLLMClient:
     supports_review_tools = True
 
@@ -355,6 +384,23 @@ def test_pipeline_does_not_hydrate_unknown_ai_paths() -> None:
     assert finding.evidence == []
 
 
+def test_pipeline_replaces_out_of_range_ai_evidence_with_changed_hunk_range() -> None:
+    pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=OutOfRangeEvidenceLLMClient())
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    finding = next(finding for finding in report.findings if finding.title == "Out-of-range evidence")
+    assert finding.evidence == [
+        EvidenceReference(
+            kind="code",
+            path="src/auth.py",
+            line_start=1,
+            line_end=2,
+            url="https://github.com/owner/repo/blob/sha123/src/auth.py#L1-L2",
+        )
+    ]
+
+
 def test_pipeline_hydrates_web_citation_labels_from_tool_results(monkeypatch) -> None:
     monkeypatch.setattr(
         "xengineer_pr_review.pipeline.default_web_searcher",
@@ -390,7 +436,9 @@ def test_pipeline_logs_when_tool_aware_llm_cannot_receive_tools(caplog) -> None:
 class PostingGitHubClient(FakeGitHubClient):
     def __init__(self) -> None:
         self.posts: list[tuple[PullRequestRef, str]] = []
-        self.reviews: list[tuple[PullRequestRef, str, str]] = []
+        self.reviews: list[
+            tuple[PullRequestRef, str, str, list[InlineReviewComment], str]
+        ] = []
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
         self.posts.append((ref, body))
@@ -401,8 +449,10 @@ class PostingGitHubClient(FakeGitHubClient):
         ref: PullRequestRef,
         body: str,
         review_action: str = "comment",
+        comments: list[InlineReviewComment] | None = None,
+        commit_id: str = "",
     ) -> PostedComment:
-        self.reviews.append((ref, body, review_action))
+        self.reviews.append((ref, body, review_action, comments or [], commit_id))
         return PostedComment(html_url="https://github.com/owner/repo/pull/1#pullrequestreview-9")
 
 
@@ -428,7 +478,7 @@ def test_pipeline_posts_pull_request_review_from_pr_url() -> None:
 
     assert result.html_url.endswith("#pullrequestreview-9")
     assert github.posts == []
-    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "comment")]
+    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "comment", [], "")]
 
 
 def test_pipeline_passes_review_action_to_pull_request_review() -> None:
@@ -442,7 +492,170 @@ def test_pipeline_passes_review_action_to_pull_request_review() -> None:
         review_action="approve",
     )
 
-    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "approve")]
+    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "approve", [], "")]
+
+
+def test_pipeline_posts_inline_review_comments_from_report_evidence() -> None:
+    github = PostingGitHubClient()
+    pipeline = ReviewPipeline(github=github, llm=MockLLMClient())
+    report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        repo="owner/repo",
+        pr_number=1,
+        author="alice",
+        summary="Summary text",
+        head_sha="sha123",
+        findings=[
+            ReviewFinding(
+                severity="high",
+                source="ai",
+                title="Token is logged",
+                explanation="Avoid logging sensitive token values.",
+                files=["src/auth.py"],
+                evidence=[
+                    EvidenceReference(
+                        kind="code",
+                        path="src/auth.py",
+                        line_start=1,
+                        line_end=2,
+                    )
+                ],
+            )
+        ],
+        suggestions=[],
+        changed_files=["src/auth.py"],
+    )
+
+    pipeline.post_review_comment(
+        "https://github.com/owner/repo/pull/1",
+        "# Report",
+        comment_mode="review",
+        include_inline_comments=True,
+        report=report,
+    )
+
+    assert github.reviews == [
+        (
+            PullRequestRef("owner", "repo", 1),
+            "# Report",
+            "comment",
+            [
+                InlineReviewComment(
+                    path="src/auth.py",
+                    body="XEngineer AI risk: Token is logged\n\nAvoid logging sensitive token values.",
+                    line=2,
+                    start_line=1,
+                )
+            ],
+            "sha123",
+        )
+    ]
+
+
+def test_pipeline_requires_report_head_sha_for_inline_review_comments() -> None:
+    github = PostingGitHubClient()
+    pipeline = ReviewPipeline(github=github, llm=MockLLMClient())
+    report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+    )
+
+    with pytest.raises(ValueError, match="head SHA"):
+        pipeline.post_review_comment(
+            "https://github.com/owner/repo/pull/1",
+            "# Report",
+            comment_mode="review",
+            include_inline_comments=True,
+            report=report,
+        )
+
+    assert github.reviews == []
+
+
+def test_build_inline_review_comments_orders_reversed_line_ranges() -> None:
+    report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+        head_sha="sha123",
+        findings=[
+            ReviewFinding(
+                severity="low",
+                source="ai",
+                title="Reversed range",
+                explanation="The evidence range was reversed.",
+                files=["src/auth.py"],
+                evidence=[
+                    EvidenceReference(
+                        kind="code",
+                        path="src/auth.py",
+                        line_start=8,
+                        line_end=3,
+                    )
+                ],
+            )
+        ],
+    )
+
+    comments = build_inline_review_comments(report)
+
+    assert comments == [
+        InlineReviewComment(
+            path="src/auth.py",
+            body="XEngineer AI risk: Reversed range\n\nThe evidence range was reversed.",
+            line=8,
+            start_line=3,
+        )
+    ]
+
+
+def test_build_inline_review_comments_deduplicates_same_location() -> None:
+    evidence = [
+        EvidenceReference(
+            kind="code",
+            path="src/auth.py",
+            line_start=3,
+            line_end=8,
+        )
+    ]
+    report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+        head_sha="sha123",
+        findings=[
+            ReviewFinding(
+                severity="low",
+                source="ai",
+                title="Duplicate location",
+                explanation="Finding should win.",
+                files=["src/auth.py"],
+                evidence=evidence,
+            )
+        ],
+        suggestions=[
+            ReviewSuggestion(
+                severity="low",
+                title="Duplicate location",
+                body="Suggestion should be deduplicated.",
+                files=["src/auth.py"],
+                evidence=evidence,
+            )
+        ],
+    )
+
+    comments = build_inline_review_comments(report)
+
+    assert comments == [
+        InlineReviewComment(
+            path="src/auth.py",
+            body="XEngineer AI risk: Duplicate location\n\nFinding should win.",
+            line=8,
+            start_line=3,
+        )
+    ]
 
 
 def test_pipeline_reports_when_client_cannot_publish_pull_request_reviews() -> None:
