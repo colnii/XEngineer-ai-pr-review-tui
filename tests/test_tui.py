@@ -139,6 +139,37 @@ async def test_tui_requires_model_key_before_import(tmp_path) -> None:
 
 
 @pytest.mark.anyio
+async def test_tui_keeps_setup_required_when_saved_key_cannot_build_pipeline(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    def missing_pipeline() -> ReviewPipeline:
+        raise RuntimeError("missing model key")
+
+    app = ReviewTUI(
+        None,
+        pipeline_factory=missing_pipeline,
+        credential_status=CredentialStatus(
+            has_deepseek_api_key=False,
+            has_openai_api_key=False,
+            has_tavily_api_key=False,
+            has_github_token=False,
+            dotenv_path=None,
+        ),
+        credential_writer=lambda values: tmp_path / ".env",
+    )
+
+    async with app.run_test():
+        app.query_one("#setup-model-key", Input).value = "deepseek-key"
+        app._save_credentials("deepseek")
+
+    assert app.pipeline is None
+    assert app.credentials_required is True
+
+
+@pytest.mark.anyio
 async def test_tui_analyze_without_saved_model_key_does_not_crash() -> None:
     def missing_pipeline() -> ReviewPipeline:
         raise RuntimeError("missing model key")

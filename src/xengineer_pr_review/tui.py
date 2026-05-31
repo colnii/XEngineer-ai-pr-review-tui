@@ -217,9 +217,11 @@ class ReviewTUI(App):
             env_path = self.credential_writer(values)
             os.environ.update(values)
             self.credential_status = read_credential_status()
+            if not self._ensure_pipeline_ready():
+                raise RuntimeError(label("status.model_key_required", self.language))
             self.credentials_required = False
-            self._ensure_pipeline_ready()
         except Exception as exc:
+            self.credentials_required = self.pipeline is None
             self._update_status(f"{label('status.credentials_save_failed', self.language)}: {exc}")
             return
 

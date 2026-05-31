@@ -127,7 +127,7 @@ def _build_pipeline_or_error(parser: argparse.ArgumentParser, **kwargs) -> Revie
     try:
         return build_pipeline(**kwargs)
     except MissingModelConfigurationError:
-        language = kwargs.get("language", "zh")
+        language = normalize_language(kwargs.get("language"))
         parser.error(format_missing_required_credentials_message(language))
 
 
