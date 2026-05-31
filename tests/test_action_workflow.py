@@ -20,6 +20,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
 
     assert "types: [opened, reopened, ready_for_review]" in workflow
     assert "synchronize" not in workflow
+    assert "Use /xengineer review to rerun after new commits" in workflow
     assert "uses: owner/xengineer@v1" in workflow
     assert "github-token: ${{ github.token }}" in workflow
     assert "comment-mode: review" in workflow
@@ -101,4 +102,10 @@ def test_repository_installs_pr_review_workflow() -> None:
     assert "github-token: ${{ github.token }}" in workflow
     assert "deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}" in workflow
     assert "openai-api-key: ${{ secrets.OPENAI_API_KEY }}" in workflow
+    assert "tavily-api-key: ${{ secrets.TAVILY_API_KEY }}" in workflow
+    assert "review-action: comment" in workflow
+    assert "language: zh" in workflow
     assert "comment-mode: conversation" in workflow
+    assert "issues: write" in workflow
+    assert "pull-requests: write" in workflow
+    assert "Use /xengineer review to rerun after new commits" in workflow

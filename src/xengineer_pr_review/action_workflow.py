@@ -18,6 +18,7 @@ def render_action_workflow(
 
 on:
   pull_request:
+    # Use /xengineer review to rerun after new commits without posting on every push.
     types: [opened, reopened, ready_for_review]
   issue_comment:
     types: [created]
