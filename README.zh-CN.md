@@ -70,16 +70,16 @@ xpr-review --judge-demo --output -
 使用真实模型输出：
 
 ```bash
-export OPENAI_API_KEY="..."
+cp .env.example .env
+# 编辑 .env，填写 OPENAI_API_KEY。
 xpr-review
 ```
 
 如需改用 DeepSeek：
 
 ```bash
-export DEEPSEEK_API_KEY="..."
-# 可选；默认是 deepseek-v4-flash。
-export DEEPSEEK_MODEL="deepseek-v4-pro"
+# 编辑 .env，填写 DEEPSEEK_API_KEY。
+# 可选；DEEPSEEK_MODEL 默认是 deepseek-v4-flash。
 xpr-review
 ```
 
@@ -93,14 +93,14 @@ xpr-review
 如需启用可选 web search（联网搜索），配置 Tavily：
 
 ```bash
-export TAVILY_API_KEY="..."
+# 编辑 .env，填写 TAVILY_API_KEY。
 xpr-review
 ```
 
 如果 GitHub 匿名 API 请求被限流，或需要审查私有仓库 PR，可以提供 GitHub token：
 
 ```bash
-export GITHUB_TOKEN="$(gh auth token)"
+# 编辑 .env，填写 GITHUB_TOKEN；或者继续使用 gh auth login。
 xpr-review --mock-llm
 ```
 
@@ -272,6 +272,9 @@ xpr-review --language en
 时使用 OpenAI。DeepSeek 走 OpenAI-compatible Chat Completions API（兼容 OpenAI
 聊天补全格式的接口），默认 `base_url` 是 `https://api.deepseek.com`；只有接入兼容网关时
 才需要覆盖 `DEEPSEEK_BASE_URL`。`DEEPSEEK_MODEL` 默认是 `deepseek-v4-flash`。
+CLI 会在构建 review pipeline 前加载最近的项目 `.env`；`.env` 里的值会覆盖本次命令里的
+临时 shell export。把 `.env.example` 复制为 `.env` 后填写本机密钥即可；`.env` 已被
+git 忽略，不应提交。
 
 也可以使用 `--mock-llm` 获得确定性的本地审查输出。评委复现优先使用 `--judge-demo`，
 这个路径不需要模型或 GitHub 密钥。
