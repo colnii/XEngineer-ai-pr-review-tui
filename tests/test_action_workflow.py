@@ -38,6 +38,7 @@ def test_render_action_workflow_supports_manual_pr_comment_command() -> None:
     assert "types: [created]" in workflow
     assert "github.event_name == 'issue_comment'" in workflow
     assert "github.event.issue.pull_request" in workflow
+    assert "github.event.issue.state == 'open'" in workflow
     assert "github.event.comment.author_association == 'OWNER'" in workflow
     assert "github.event.comment.author_association == 'MEMBER'" in workflow
     assert "github.event.comment.author_association == 'COLLABORATOR'" in workflow
@@ -92,7 +93,7 @@ def test_init_action_workflow_can_overwrite_existing_file(tmp_path: Path) -> Non
 
 
 def test_repository_installs_pr_review_workflow() -> None:
-    workflow_path = WORKFLOW_RELATIVE_PATH
+    workflow_path = Path(__file__).resolve().parents[1] / WORKFLOW_RELATIVE_PATH
 
     workflow = workflow_path.read_text(encoding="utf-8")
 
