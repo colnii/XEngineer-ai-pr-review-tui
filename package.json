@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "One-command npm wrapper for the XEngineer AI PR reviewer",
   "bin": {
-    "xengineer-pr-review": "./bin/xengineer-pr-review.js"
+    "xengineer-pr-review": "bin/xengineer-pr-review.js"
   },
   "files": [
     "bin/",
