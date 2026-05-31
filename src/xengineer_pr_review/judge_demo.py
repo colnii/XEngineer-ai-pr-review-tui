@@ -55,7 +55,7 @@ index 6666666..7777777 100644
 +
 +## Judge Demo
 +
-+Run `xpr-review --judge-demo` to open a deterministic review demo without API keys.
++Run `npx xengineer-pr-review --judge-demo` to open a deterministic review demo without API keys.
 """
 
 

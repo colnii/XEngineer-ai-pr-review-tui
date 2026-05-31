@@ -12,33 +12,43 @@ For evaluation, run the built-in deterministic demo first. It does not require
 `OPENAI_API_KEY`, `GITHUB_TOKEN`, or a live GitHub PR:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-xpr-review --judge-demo
+# Requires Node.js 18+ and Python 3.12+.
+npx xengineer-pr-review --judge-demo
 ```
 
 The TUI opens with a demo PR URL prefilled and starts analysis automatically. Use this path
 to verify the product flow, report structure, risk signals, suggestions, and Markdown export.
+When running from a cloned checkout before publishing the npm package, use `npx . --judge-demo`.
 
 ### Normal Local Run
+
+```bash
+cp .env.example .env
+# Edit .env and set DEEPSEEK_API_KEY or OPENAI_API_KEY.
+npx xengineer-pr-review
+```
+
+The npm wrapper creates and reuses an internal Python virtual environment in the user cache,
+then runs the existing Python CLI. Set `XENGINEER_PYTHON=/path/to/python` if Python 3.12+
+is not autodetected.
+
+For contributor development, the Python console script is still available:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-# Normal PR review requires a DeepSeek or OpenAI key.
-export OPENAI_API_KEY="..."
 xpr-review
 ```
 
-If your shell uses a SOCKS proxy, rerun `pip install -e ".[dev]"` after pulling updates so
-the `socksio` dependency is installed.
+If your shell uses a SOCKS proxy, rerun `pip install -e ".[dev]"` after pulling updates in
+developer mode so the `socksio` dependency is installed.
 
 ## Current Scope
 
 - Public GitHub PRs, plus private GitHub PRs when a configured token has access.
 - TUI entry point.
+- npm/npx wrapper that hides virtualenv setup for normal users.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
 - PR conversation comments, review bodies, inline review comments, and commit messages
@@ -58,20 +68,20 @@ Use `--output -` to print the Markdown report to stdout, or pass a file path
 to write the report:
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --output -
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --output review-report.md
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --output -
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --output review-report.md
 ```
 
 The zero-configuration judge demo also supports the same headless path:
 
 ```bash
-xpr-review --judge-demo --output -
+npx xengineer-pr-review --judge-demo --output -
 ```
 
 The TUI defaults to Chinese. To start in English:
 
 ```bash
-xpr-review --language en
+npx xengineer-pr-review --language en
 ```
 
 For real model output:
@@ -79,7 +89,7 @@ For real model output:
 ```bash
 cp .env.example .env
 # Edit .env and set OPENAI_API_KEY.
-xpr-review
+npx xengineer-pr-review
 ```
 
 To use DeepSeek instead:
@@ -87,7 +97,7 @@ To use DeepSeek instead:
 ```bash
 # Edit .env and set DEEPSEEK_API_KEY.
 # Optional: DEEPSEEK_MODEL defaults to deepseek-v4-flash.
-xpr-review
+npx xengineer-pr-review
 ```
 
 Real model mode uses a LangGraph-backed review agent. During the LLM review step, the model
@@ -101,7 +111,7 @@ Optional web search can be enabled with Tavily:
 
 ```bash
 # Edit .env and set TAVILY_API_KEY.
-xpr-review
+npx xengineer-pr-review
 ```
 
 If GitHub anonymous API requests are rate limited, or you need to review a private
@@ -109,7 +119,7 @@ repository PR, provide a GitHub token:
 
 ```bash
 # Edit .env and set GITHUB_TOKEN, or keep using gh auth login.
-xpr-review
+npx xengineer-pr-review
 ```
 
 You can also use `GH_TOKEN`, or run `gh auth login` so the app can read the local
@@ -126,14 +136,14 @@ The same write path is available from the command line, but it requires an
 explicit confirmation flag because there is no TUI preview step:
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
 ```
 
 To publish the same Markdown report as a pull request review body instead, select
 review mode:
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
 ```
 
 Review mode defaults to a non-blocking `COMMENT` review. To intentionally submit
@@ -209,11 +219,10 @@ review body. Configure `DEEPSEEK_API_KEY` or
 `OPENAI_API_KEY` as a repository secret for real model output. Without a model
 key, the Action fails and does not publish a review.
 
-After installing the CLI, you can generate the same workflow instead of writing
-YAML by hand:
+You can generate the same workflow instead of writing YAML by hand:
 
 ```bash
-xpr-review init-action --repo-path /path/to/target/repo --language en
+npx xengineer-pr-review init-action --repo-path /path/to/target/repo --language en
 ```
 
 If you run the command inside the target repository, omit `--repo-path`. Use
@@ -244,6 +253,7 @@ Top-level third-party dependencies are declared in [pyproject.toml](pyproject.to
 - `langgraph`: agent loop orchestration for model -> tool -> model review flow.
 - `pydantic`: typed data validation support for structured models.
 - Development-only tools: `pytest` for tests and `ruff` for linting.
+- npm wrapper runtime: Node.js 18+ with no npm runtime dependencies.
 
 External services are GitHub REST APIs, optional OpenAI/DeepSeek model APIs, and optional Tavily web search.
 These services are integrated through this project code and are not embedded third-party code.
@@ -251,8 +261,8 @@ These services are integrated through this project code and are not embedded thi
 Original project work includes PR URL parsing, unified diff parsing, deterministic rule analysis, context trimming,
 report aggregation/export, Chinese/English TUI presentation, manual PR comment publishing, the LangGraph review client
 integration, bounded `read_file`/`grep_code`/`web_search` tool behavior, GitHub file/tree adapters, safety limits,
-fallback warnings, and the fake-client test suite. Third-party libraries provide infrastructure; the PR review product
-workflow and tool policies are implemented in this repository.
+fallback warnings, the npm wrapper, and the fake-client test suite. Third-party libraries provide infrastructure;
+the PR review product workflow and tool policies are implemented in this repository.
 
 ## Model Choice
 
@@ -306,8 +316,6 @@ When a real model is configured, the LangGraph agent can request extra context w
 
 ## Future Work
 
-- One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
-  backed by a small Node wrapper around the packaged Python app.
 - Web UI using the same review core.
 - Optional inline review comments after GitHub inline-position mapping is implemented.
 - Configurable organization-specific review rules.
