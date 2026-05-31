@@ -357,8 +357,13 @@ def test_main_refuses_empty_output_path(monkeypatch) -> None:
 
 
 def test_main_refuses_real_review_without_model_key(monkeypatch) -> None:
+    @contextmanager
+    def fake_loaded_dotenv() -> Iterator[None]:
+        yield None
+
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(main_module, "loaded_dotenv", fake_loaded_dotenv)
 
     with pytest.raises(SystemExit) as exc:
         main_module.main(["--pr-url", PR_URL, "--output", "-"])
