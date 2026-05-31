@@ -14,9 +14,11 @@
     ".env.example"
   ],
   "scripts": {
+    "release:check": "node scripts/run-python.js scripts/release_check.py",
+    "prepublishOnly": "npm run release:check",
     "test": "node --test tests/npm-wrapper.test.js",
-    "test:python": "python3 -m pytest",
-    "test:all": "npm test && python3 -m pytest"
+    "test:python": "node scripts/run-python.js -m pytest",
+    "test:all": "npm test && npm run test:python"
   },
   "engines": {
     "node": ">=18"

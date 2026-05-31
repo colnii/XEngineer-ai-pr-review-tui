@@ -6,4 +6,5 @@ __pycache__/
 .env
 dist/
 build/
+*.tgz
 *.egg-info/
