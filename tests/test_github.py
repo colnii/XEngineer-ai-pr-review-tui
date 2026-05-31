@@ -138,6 +138,11 @@ def test_fetch_pr_uses_authenticated_pull_api_for_diff(monkeypatch) -> None:
             "*/*",
             "Bearer private-token",
         ),
+        (
+            "https://api.github.com/repos/owner/repo/issues/1/timeline?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
     ]
 
 
@@ -160,7 +165,7 @@ def test_fetch_pr_allows_public_pr_without_token(monkeypatch) -> None:
     pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
 
     assert pr.title == "Demo PR"
-    assert authorizations == [None, None, None, None, None, None]
+    assert authorizations == [None, None, None, None, None, None, None]
 
 
 def test_fetch_pr_includes_pull_request_activity(monkeypatch) -> None:
@@ -221,6 +226,19 @@ def test_fetch_pr_includes_pull_request_activity(monkeypatch) -> None:
                     }
                 ],
             )
+        if url == "https://api.github.com/repos/owner/repo/issues/1/timeline?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "event": "review_requested",
+                        "actor": {"login": "alice"},
+                        "requested_reviewer": {"login": "bob"},
+                        "created_at": "2026-05-30T13:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#event-1",
+                    }
+                ],
+            )
         return _pull_api_response(request)
 
     client = GitHubClient(transport=httpx.MockTransport(handler))
@@ -232,12 +250,15 @@ def test_fetch_pr_includes_pull_request_activity(monkeypatch) -> None:
         ("conversation", "reviewer"),
         ("review", "maintainer"),
         ("inline", "maintainer"),
+        ("event", "alice"),
     ]
     assert pr.activities[0].commit_sha == "abcdef1"
     assert pr.activities[1].body == "Please rerun after the latest commit."
     assert pr.activities[2].state == "COMMENTED"
     assert pr.activities[3].path == "action.yml"
     assert pr.activities[3].line == 57
+    assert pr.activities[4].event == "review_requested"
+    assert pr.activities[4].body == "requested reviewer: bob"
 
 
 def test_fetch_pr_continues_when_one_activity_endpoint_fails(monkeypatch, caplog) -> None:
@@ -278,29 +299,41 @@ def test_fetch_pr_continues_when_activity_payload_is_invalid(monkeypatch, caplog
     assert "Failed to fetch PR reviews" in caplog.text
 
 
-def test_fetch_pr_activity_pagination_is_bounded(monkeypatch) -> None:
+def test_fetch_pr_activity_pagination_reads_multiple_pages_up_to_cap(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
     requests: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         requests.append(url)
-        if url == "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100":
+        if url.startswith("https://api.github.com/repos/owner/repo/pulls/1/commits"):
+            page = "1"
+            if "page=2" in url:
+                page = "2"
+            if "page=3" in url:
+                page = "3"
+            if "page=4" in url:
+                page = "4"
+            start = (int(page) - 1) * 100
+            headers = {}
+            if page != "3":
+                headers["Link"] = (
+                    "<https://api.github.com/repos/owner/repo/pulls/1/commits"
+                    f"?page={int(page) + 1}&per_page=100>; rel=\"next\""
+                )
             return httpx.Response(
                 200,
                 json=[
                     {
-                        "sha": f"{index:07d}",
-                        "commit": {"message": f"commit {index}", "author": {"name": "Alice"}},
+                        "sha": f"{start + index:07d}",
+                        "commit": {
+                            "message": f"commit {start + index}",
+                            "author": {"name": "Alice"},
+                        },
                     }
                     for index in range(100)
                 ],
-                headers={
-                    "Link": (
-                        '<https://api.github.com/repos/owner/repo/pulls/1/commits'
-                        '?page=2&per_page=100>; rel="next"'
-                    )
-                },
+                headers=headers,
             )
         return _pull_api_response(request)
 
@@ -308,8 +341,10 @@ def test_fetch_pr_activity_pagination_is_bounded(monkeypatch) -> None:
 
     pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
 
-    assert len([activity for activity in pr.activities if activity.kind == "commit"]) == 100
-    assert not any("page=2" in request for request in requests)
+    assert len([activity for activity in pr.activities if activity.kind == "commit"]) == 300
+    assert any("page=2" in request for request in requests)
+    assert any("page=3" in request for request in requests)
+    assert not any("page=4" in request for request in requests)
 
 
 def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
@@ -645,6 +680,7 @@ def _pull_api_response(request: httpx.Request) -> httpx.Response:
         "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100",
         "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100",
         "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100",
+        "https://api.github.com/repos/owner/repo/issues/1/timeline?per_page=100",
     }
     if str(request.url) in activity_urls:
         return httpx.Response(200, json=[])

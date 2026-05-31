@@ -129,7 +129,7 @@ def build_llm_context(
             f"Author: {pr.author}",
             f"Branches: {pr.base_branch} <- {pr.head_branch}",
             "Rule findings:\n" + ("\n".join(finding_lines) if finding_lines else "- none"),
-            "PR activity history:\n" + "\n".join(_format_activity_lines(pr.activities)),
+            "PR activity history:\n" + "\n".join(format_pr_activity_lines(pr.activities)),
             "Changed file index:\n" + ("\n".join(file_index_lines) if file_index_lines else "- none"),
             "Changed files:\n" + "\n\n".join(file_blocks),
             "Return concise review output with summary, risks, and reviewer suggestions.",
@@ -158,9 +158,9 @@ def has_review_signal(path: str) -> bool:
     return _has_review_signal(path)
 
 
-def _format_activity_lines(
+def format_pr_activity_lines(
     activities: tuple[PullRequestActivity, ...],
-    max_items: int = 80,
+    max_items: int = 200,
     max_body_chars: int = 1200,
 ) -> list[str]:
     if not activities:
@@ -170,13 +170,16 @@ def _format_activity_lines(
         for activity in activities[:max_items]
     ]
     if len(activities) > max_items:
-        lines.append(f"- [truncated {len(activities) - max_items} older PR activity items]")
+        lines.append(f"- [truncated {len(activities) - max_items} additional PR activity items]")
     return lines
 
 
 def _format_activity(activity: PullRequestActivity, max_body_chars: int) -> str:
     if activity.kind == "commit":
         prefix = f"commit {activity.commit_sha or 'unknown'} by {activity.author or 'unknown'}"
+    elif activity.kind == "event":
+        event_name = activity.event or activity.state or "unknown"
+        prefix = f"event {event_name} by {activity.author or 'unknown'}"
     else:
         prefix = f"{activity.kind} by {activity.author or 'unknown'}"
     if activity.state:

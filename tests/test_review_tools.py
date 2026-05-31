@@ -1,6 +1,6 @@
 import pytest
 
-from xengineer_pr_review.models import PullRequestRef
+from xengineer_pr_review.models import PullRequestActivity, PullRequestRef
 from xengineer_pr_review.review_tools import MAX_CACHED_FILES, ReviewToolbox, TavilyWebSearchClient
 
 
@@ -286,6 +286,56 @@ def test_grep_code_reports_skipped_unreadable_files() -> None:
 
     assert "src/app.py:1: target = True" in result
     assert "skipped 1 unreadable file" in result
+
+
+def test_read_pr_activity_filters_and_formats_activity_history() -> None:
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        activities=(
+            PullRequestActivity(
+                kind="conversation",
+                author="reviewer",
+                body="Please rerun after the latest push.",
+                created_at="2026-05-30T10:00:00Z",
+            ),
+            PullRequestActivity(
+                kind="event",
+                author="alice",
+                event="review_requested",
+                body="requested reviewer: bob",
+                created_at="2026-05-30T11:00:00Z",
+            ),
+        ),
+    )
+
+    result = toolbox.read_pr_activity(kind="event", max_items=1)
+
+    assert "PR activity history (event, showing 1 of 1 items)" in result
+    assert "event review_requested by alice at 2026-05-30T11:00:00Z" in result
+    assert "requested reviewer: bob" in result
+    assert "Please rerun after the latest push." not in result
+
+
+def test_read_pr_activity_defaults_to_initial_context_item_budget() -> None:
+    activities = tuple(
+        PullRequestActivity(kind="commit", author="alice", body=f"commit {index}")
+        for index in range(201)
+    )
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        activities=activities,
+    )
+
+    result = toolbox.read_pr_activity()
+
+    assert "showing 200 of 201 items" in result
+    assert "commit 199" in result
+    assert "commit 200" not in result
+    assert "truncated 1 additional PR activity items" in result
 
 
 def test_web_search_reports_unavailable_when_not_configured() -> None:

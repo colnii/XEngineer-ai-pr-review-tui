@@ -10,14 +10,16 @@ from typing import Protocol
 
 import httpx
 
-from xengineer_pr_review.context import has_review_signal
-from xengineer_pr_review.models import EvidenceReference, PullRequestRef
+from xengineer_pr_review.context import format_pr_activity_lines, has_review_signal
+from xengineer_pr_review.models import EvidenceReference, PullRequestActivity, PullRequestRef
 
 
 MAX_READ_LINES = 1000
 MAX_GREP_FILES = 40
 MAX_GREP_RESULTS = 20
 MAX_CACHED_FILES = 40
+DEFAULT_PR_ACTIVITY_TOOL_ITEMS = 200
+MAX_PR_ACTIVITY_TOOL_ITEMS = 300
 
 
 class GitHubReadLike(Protocol):
@@ -36,6 +38,7 @@ class ReviewToolbox:
     git_ref: str
     web_searcher: WebSearchLike | None = None
     file_ids: dict[str, str] = field(default_factory=dict)
+    activities: tuple[PullRequestActivity, ...] = ()
     _tree_paths_cache: list[str] | None = field(default=None, init=False, repr=False)
     _file_text_cache: OrderedDict[str, str] = field(
         default_factory=OrderedDict,
@@ -159,6 +162,42 @@ class ReviewToolbox:
         if skipped_files:
             matches.append(_skipped_files_message(skipped_files))
         return "\n".join(matches)
+
+    def read_pr_activity(
+        self,
+        kind: str = "all",
+        max_items: int = DEFAULT_PR_ACTIVITY_TOOL_ITEMS,
+    ) -> str:
+        normalized_kind = str(kind or "all").strip().lower()
+        allowed_kinds = {"all", "commit", "conversation", "review", "inline", "event"}
+        if normalized_kind not in allowed_kinds:
+            return (
+                "read_pr_activity error: kind must be one of "
+                "all, commit, conversation, review, inline, event."
+            )
+        max_items = _bounded_int(
+            max_items,
+            default=DEFAULT_PR_ACTIVITY_TOOL_ITEMS,
+            minimum=1,
+            maximum=MAX_PR_ACTIVITY_TOOL_ITEMS,
+        )
+        selected = (
+            self.activities
+            if normalized_kind == "all"
+            else tuple(activity for activity in self.activities if activity.kind == normalized_kind)
+        )
+        if not selected:
+            return f"read_pr_activity found no {normalized_kind} PR activity items."
+        lines = format_pr_activity_lines(selected, max_items=max_items)
+        return "\n".join(
+            [
+                (
+                    f"PR activity history ({normalized_kind}, showing "
+                    f"{min(len(selected), max_items)} of {len(selected)} items)"
+                ),
+                *lines,
+            ]
+        )
 
     def web_search(self, query: str, max_results: int = 3) -> str:
         if self.web_searcher is None:

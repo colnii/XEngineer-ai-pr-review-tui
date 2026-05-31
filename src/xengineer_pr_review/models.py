@@ -11,7 +11,7 @@ FindingSource = Literal["rule", "ai"]
 SuggestionType = Literal["comment", "test", "maintainability", "edge-case"]
 Confidence = Literal["high", "medium", "low"]
 EvidenceKind = Literal["code", "web"]
-PullRequestActivityKind = Literal["commit", "conversation", "review", "inline"]
+PullRequestActivityKind = Literal["commit", "conversation", "review", "inline", "event"]
 ReviewAction = Literal["comment", "approve", "request-changes"]
 ReviewCommentSide = Literal["LEFT", "RIGHT"]
 
@@ -40,6 +40,7 @@ class PullRequestActivity:
     created_at: str = ""
     url: str = ""
     state: str = ""
+    event: str = ""
     path: str = ""
     line: int | None = None
     commit_sha: str = ""

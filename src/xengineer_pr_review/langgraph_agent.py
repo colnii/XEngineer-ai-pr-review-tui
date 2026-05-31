@@ -11,7 +11,7 @@ from xengineer_pr_review.locale import normalize_language
 
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
-DEFAULT_MAX_TOOL_ROUNDS = 20
+DEFAULT_MAX_TOOL_ROUNDS = 40
 TOOL_ROUND_LIMIT_WARNING = "Tool round limit reached before the model returned a final report."
 
 
@@ -167,12 +167,13 @@ class LangGraphReviewClient:
     def _initial_messages(self, prompt: str, toolbox: Any | None) -> list[dict[str, Any]]:
         system = build_review_system_message(self.language)
         if toolbox is not None:
-            tool_names = "read_file and grep_code"
+            tool_names = "read_file, grep_code, and read_pr_activity"
             if _web_search_enabled(toolbox):
-                tool_names = "read_file, grep_code, and web_search"
+                tool_names = "read_file, grep_code, read_pr_activity, and web_search"
             system += (
                 f" You may call {tool_names} when the diff is not enough. "
                 "Prefer read_file file_id values from the changed file index instead of copying paths. "
+                "Use read_pr_activity when previous comments, review states, or timeline events matter. "
                 "Continue using tools only while they add review value. "
                 "When you have enough evidence, stop calling tools and return the final JSON report."
             )
@@ -243,6 +244,11 @@ def _dispatch_tool_call(toolbox: Any | None, call: dict[str, Any]) -> str:
             path_glob=arguments.get("path_glob"),
             max_results=_int_argument(arguments, "max_results", 20),
         )
+    if name == "read_pr_activity":
+        return toolbox.read_pr_activity(
+            kind=str(arguments.get("kind", "all")),
+            max_items=_int_argument(arguments, "max_items", 200),
+        )
     if name == "web_search":
         return toolbox.web_search(
             str(arguments.get("query", "")),
@@ -257,6 +263,7 @@ def _is_tool_warning(result: str) -> bool:
         (
             "read_file error",
             "grep_code error",
+            "read_pr_activity error",
             "web_search error",
             "web_search unavailable",
             "tool error",
@@ -313,6 +320,29 @@ def _tool_schemas(web_search_enabled: bool) -> list[dict[str, Any]]:
                         "max_results": {"type": "integer", "minimum": 1, "maximum": 20},
                     },
                     "required": ["pattern"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_pr_activity",
+                "description": (
+                    "Read current and historical pull request activity already fetched from GitHub: "
+                    "conversation comments, review bodies, inline review comments, timeline events, "
+                    "and commit messages."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["all", "commit", "conversation", "review", "inline", "event"],
+                            "description": "Activity kind filter. Use all for the full fetched history.",
+                        },
+                        "max_items": {"type": "integer", "minimum": 1, "maximum": 300},
+                    },
                     "additionalProperties": False,
                 },
             },

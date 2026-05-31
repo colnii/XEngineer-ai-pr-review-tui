@@ -169,6 +169,7 @@ class ReviewPipeline:
             git_ref=pr.head_sha or pr.head_branch,
             web_searcher=default_web_searcher(),
             file_ids=file_ids,
+            activities=pr.activities,
         )
         result = self.llm.analyze(prompt, toolbox=toolbox)
         _hydrate_web_evidence(result.risks, result.suggestions, toolbox.web_sources)
