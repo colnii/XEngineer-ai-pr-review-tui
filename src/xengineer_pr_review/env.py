@@ -71,7 +71,7 @@ def parse_dotenv(text: str) -> dict[str, str]:
 
 
 def _clean_dotenv_value(raw_value: str) -> str:
-    value = _strip_inline_comment(raw_value.strip())
+    value = _strip_inline_comment(raw_value.rstrip()).strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         return value[1:-1]
     return value
@@ -94,6 +94,6 @@ def _strip_inline_comment(value: str) -> str:
             elif quote is None:
                 quote = character
             continue
-        if character == "#" and quote is None and (index == 0 or value[index - 1].isspace()):
+        if character == "#" and quote is None and index > 0 and value[index - 1].isspace():
             return value[:index].rstrip()
     return value
