@@ -110,7 +110,7 @@ TUI 不会输入、显示或保存 token。
 
 如需把生成的报告发布为 PR 顶层 Conversation 评论，请先配置 GitHub token，然后在分析
 完成后点击 TUI 的 `发布评论` 按钮。第一次点击只进入确认状态，第二次点击才会真正发布。
-细粒度 token 需要目标仓库的 `Issues: write` 或 `Pull requests: write` 权限。
+细粒度 token 需要目标仓库的 `Issues: write` 权限。
 
 同一个写入路径也可以从命令行触发；因为命令行没有 TUI 预览步骤，所以必须显式传入确认参数：
 
@@ -127,7 +127,7 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 review 模式默认提交不阻塞合并的 `COMMENT` review。如果确认要提交批准或阻塞式修改请求，
 再显式追加 `--review-action approve` 或 `--review-action request-changes`。这两个动作可能影响
 启用了 review 门禁的仓库是否可合并，所以默认保持 comment。review 模式需要 `Pull requests: write`
-权限；Conversation 评论模式需要 `Issues: write` 或 `Pull requests: write`。
+权限；Conversation 评论模式需要 `Issues: write`。
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
 在 CI 等非交互式自动化环境里，可以用 `--auto-publish` 代替 `--confirm-publish`，
@@ -149,6 +149,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
@@ -185,8 +186,9 @@ jobs:
 默认 workflow 会在 PR 创建、重新打开、从 draft 变成 ready for review，或有人在 PR 页面评论
 `/xengineer review` 且该评论者是 owner、member 或 collaborator 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
 `comment-mode: review`。`review-action` 默认是 `comment`，也可以显式设为 `approve` 或
-`request-changes`，用于需要进入合并门禁的 workflow。使用 review 模式时保留 workflow 里的
-`pull-requests: write` 权限。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次
+`request-changes`，用于需要进入合并门禁的 workflow。Conversation 评论模式需要保留
+`issues: write` 权限；使用 review 模式时保留 workflow 里的 `pull-requests: write`
+权限。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次
 发送这个命令评论。
 如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
 没有模型 key 时，CLI 会按现有规则回退到确定性的 mock 输出。

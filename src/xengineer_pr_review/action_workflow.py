@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+{_render_issues_permission(comment_mode)}
   pull-requests: write
 
 jobs:
@@ -56,6 +57,12 @@ jobs:
           openai-api-key: ${{{{ secrets.OPENAI_API_KEY }}}}
           tavily-api-key: ${{{{ secrets.TAVILY_API_KEY }}}}
 """
+
+
+def _render_issues_permission(comment_mode: str) -> str:
+    if comment_mode == "conversation":
+        return "  issues: write"
+    return ""
 
 
 def init_action_workflow(

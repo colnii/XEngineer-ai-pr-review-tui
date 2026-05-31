@@ -121,7 +121,7 @@ store tokens.
 To publish the generated report as a top-level PR conversation comment, configure
 a token and use the TUI `Publish Comment` button after analysis. The first click
 asks for confirmation; the second click posts the comment. Fine-grained tokens need
-`Issues: write` or `Pull requests: write` on the target repository.
+`Issues: write` on the target repository.
 
 The same write path is available from the command line, but it requires an
 explicit confirmation flag because there is no TUI preview step:
@@ -142,7 +142,7 @@ an approval or a blocking change request, add `--review-action approve` or
 `--review-action request-changes`. These actions can affect branch protection on
 repositories that require reviews, so keep the default unless the automation is
 trusted for merge gating. Review mode requires `Pull requests: write`; conversation
-comment mode requires `Issues: write` or `Pull requests: write`.
+comment mode requires `Issues: write`.
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
 In non-interactive automation, `--auto-publish` can be used instead of
@@ -164,6 +164,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
@@ -203,7 +204,8 @@ on the PR page as an owner, member, or collaborator. Set `comment-mode: review` 
 review body instead; `review-action` defaults to `comment`, with `approve` and
 `request-changes` available for explicit merge-gating workflows. It does not edit
 older bot comments and does not run on every pushed commit unless that command comment is added.
-Keep `pull-requests: write` in the workflow permissions when using review mode. Configure `DEEPSEEK_API_KEY` or
+Keep `issues: write` for conversation comments, and keep `pull-requests: write`
+when using review mode. Configure `DEEPSEEK_API_KEY` or
 `OPENAI_API_KEY` as a repository secret for real model output; without a model
 key, the CLI falls back to deterministic mock output.
 

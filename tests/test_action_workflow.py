@@ -41,6 +41,8 @@ def test_render_action_workflow_supports_manual_pr_comment_command() -> None:
     assert "github.event.comment.author_association == 'COLLABORATOR'" in workflow
     assert "contains(github.event.comment.body, '/xengineer review')" in workflow
     assert "format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number)" in workflow
+    assert "issues: write" in workflow
+    assert "pull-requests: write" in workflow
 
 
 def test_default_action_reference_uses_stable_major_version() -> None:
