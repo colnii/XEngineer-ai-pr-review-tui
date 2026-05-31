@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from textual.app import App, ComposeResult, ScreenStackError
@@ -7,6 +9,11 @@ from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.widgets import Button, Footer, Header, Input, RichLog, Static, TabPane, TabbedContent
 
+from xengineer_pr_review.credentials import (
+    CredentialStatus,
+    read_credential_status,
+    save_runtime_credentials,
+)
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.locale import (
     display_confidence,
@@ -26,6 +33,12 @@ class ReviewTUI(App):
     CSS = """
     Screen { padding: 1 2; }
     #toolbar { height: auto; margin-bottom: 1; }
+    #setup { height: auto; border: solid $warning; padding: 1; margin-bottom: 1; }
+    #setup-text { height: auto; margin-bottom: 1; }
+    #setup-model-key { width: 1fr; margin-right: 1; }
+    #setup-tavily-key { width: 1fr; margin-right: 1; }
+    #setup-github-token { width: 1fr; margin-right: 1; }
+    #setup-save-deepseek { margin-right: 1; }
     #pr-url { width: 1fr; margin-right: 1; }
     #analyze { margin-right: 1; }
     #main { height: 1fr; }
@@ -37,13 +50,20 @@ class ReviewTUI(App):
 
     def __init__(
         self,
-        pipeline: ReviewPipeline,
+        pipeline: ReviewPipeline | None,
+        pipeline_factory: Callable[[], ReviewPipeline] | None = None,
+        credential_status: CredentialStatus | None = None,
+        credential_writer: Callable[[Mapping[str, str]], Path] = save_runtime_credentials,
         language: str = "zh",
         initial_pr_url: str = "",
         auto_analyze: bool = False,
     ) -> None:
         super().__init__()
         self.pipeline = pipeline
+        self.pipeline_factory = pipeline_factory
+        self.credential_status = credential_status or read_credential_status()
+        self.credential_writer = credential_writer
+        self.credentials_required = pipeline is None and not self.credential_status.has_model_key
         self.language = normalize_language(language)
         self.initial_pr_url = initial_pr_url
         self.auto_analyze = auto_analyze
@@ -54,6 +74,35 @@ class ReviewTUI(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="root"):
+            if self.credentials_required:
+                with Vertical(id="setup"):
+                    yield Static(self._setup_text(), id="setup-text")
+                    with Horizontal(id="setup-model-row"):
+                        yield Input(
+                            placeholder=label("input.model_key", self.language),
+                            password=True,
+                            id="setup-model-key",
+                        )
+                        yield Button(
+                            label("button.save_deepseek", self.language),
+                            id="setup-save-deepseek",
+                            variant="primary",
+                        )
+                        yield Button(
+                            label("button.save_openai", self.language),
+                            id="setup-save-openai",
+                        )
+                    with Horizontal(id="setup-optional-row"):
+                        yield Input(
+                            placeholder=label("input.tavily_key", self.language),
+                            password=True,
+                            id="setup-tavily-key",
+                        )
+                        yield Input(
+                            placeholder=label("input.github_token", self.language),
+                            password=True,
+                            id="setup-github-token",
+                        )
             with Horizontal(id="toolbar"):
                 yield Input(
                     value=self.initial_pr_url,
@@ -89,6 +138,10 @@ class ReviewTUI(App):
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "analyze":
             await self._analyze()
+        elif event.button.id == "setup-save-deepseek":
+            self._save_credentials("deepseek")
+        elif event.button.id == "setup-save-openai":
+            self._save_credentials("openai")
         elif event.button.id == "export":
             self._export()
         elif event.button.id == "publish":
@@ -102,13 +155,25 @@ class ReviewTUI(App):
     async def _analyze(self) -> None:
         url = self.query_one("#pr-url", Input).value
         status = self.query_one("#status", Static)
+        try:
+            pipeline_ready = self._ensure_pipeline_ready()
+        except Exception as exc:
+            status.update(f"{label('status.error', self.language)}: {exc}")
+            return
+        if not pipeline_ready:
+            status.update(label("status.model_key_required", self.language))
+            return
+        pipeline = self.pipeline
+        if pipeline is None:
+            status.update(label("status.model_key_required", self.language))
+            return
         self._reset_publish_confirmation()
         self._clear_report_logs()
         status.update(self._phase_text("Running"))
         self.query_one("#meta", Static).update(self._meta_text(None))
         try:
             report = await self.run_worker(
-                lambda: self.pipeline.run(url),
+                lambda: pipeline.run(url),
                 thread=True,
                 exclusive=True,
             ).wait()
@@ -130,6 +195,57 @@ class ReviewTUI(App):
         output_path = Path("review-report.md")
         output_path.write_text(self.last_markdown)
         status.update(f"{label('status.exported', self.language)} {output_path}")
+
+    def _save_credentials(self, provider: str) -> None:
+        provider_key = "DEEPSEEK_API_KEY" if provider == "deepseek" else "OPENAI_API_KEY"
+        model_key = self._input_value("#setup-model-key")
+        if not model_key:
+            self._update_status(label("status.model_key_required", self.language))
+            return
+
+        values = {provider_key: model_key}
+        tavily_key = self._input_value("#setup-tavily-key")
+        github_token = self._input_value("#setup-github-token")
+        if tavily_key:
+            values["TAVILY_API_KEY"] = tavily_key
+        if github_token:
+            values["GITHUB_TOKEN"] = github_token
+
+        try:
+            env_path = self.credential_writer(values)
+            os.environ.update(values)
+            self.credential_status = read_credential_status()
+            self.credentials_required = False
+            self._ensure_pipeline_ready()
+        except Exception as exc:
+            self._update_status(f"{label('status.credentials_save_failed', self.language)}: {exc}")
+            return
+
+        self._update_setup_text(
+            f"{label('status.credentials_saved', self.language)}: {env_path}\n"
+            f"{provider_key} configured."
+        )
+        self._update_status(label("status.ready", self.language))
+
+    def _input_value(self, selector: str) -> str:
+        try:
+            return self.query_one(selector, Input).value.strip()
+        except (NoMatches, ScreenStackError):
+            return ""
+
+    def _ensure_pipeline_ready(self) -> bool:
+        if self.pipeline is not None:
+            return True
+        if self.pipeline_factory is None:
+            return False
+        self.pipeline = self.pipeline_factory()
+        return True
+
+    def _update_setup_text(self, text: str) -> None:
+        try:
+            self.query_one("#setup-text", Static).update(text)
+        except (NoMatches, ScreenStackError):
+            return
 
     def _update_status(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
@@ -186,7 +302,31 @@ class ReviewTUI(App):
             self._render_report(self.last_report)
 
     def _update_static_language(self) -> None:
+        self._update_setup_text(self._setup_text())
         self.query_one("#pr-url", Input).placeholder = label("input.pr_url", self.language)
+        try:
+            self.query_one("#setup-model-key", Input).placeholder = label(
+                "input.model_key",
+                self.language,
+            )
+            self.query_one("#setup-tavily-key", Input).placeholder = label(
+                "input.tavily_key",
+                self.language,
+            )
+            self.query_one("#setup-github-token", Input).placeholder = label(
+                "input.github_token",
+                self.language,
+            )
+            self.query_one("#setup-save-deepseek", Button).label = label(
+                "button.save_deepseek",
+                self.language,
+            )
+            self.query_one("#setup-save-openai", Button).label = label(
+                "button.save_openai",
+                self.language,
+            )
+        except (NoMatches, ScreenStackError):
+            pass
         self.query_one("#analyze", Button).label = label("button.analyze", self.language)
         self.query_one("#export", Button).label = label("button.export", self.language)
         self.query_one("#publish", Button).label = label("button.publish", self.language)
@@ -321,6 +461,16 @@ class ReviewTUI(App):
                 f"{label('meta.suggestion_count', self.language)}: {len(report.suggestions)}",
                 f"{label('report.llm_status', self.language)}: "
                 f"{display_llm_status(report.llm_status, self.language)}",
+            ]
+        )
+
+    def _setup_text(self) -> str:
+        return "\n".join(
+            [
+                label("setup.title", self.language),
+                label("setup.required", self.language),
+                label("setup.optional", self.language),
+                label("setup.github_help", self.language),
             ]
         )
 

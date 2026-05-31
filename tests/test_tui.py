@@ -1,7 +1,9 @@
 import asyncio
 
 import pytest
+from textual.widgets import Input
 
+from xengineer_pr_review.credentials import CredentialStatus
 from xengineer_pr_review.llm import MockLLMClient
 from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
 from xengineer_pr_review.pipeline import ReviewPipeline
@@ -40,6 +42,23 @@ def test_tui_accepts_initial_pr_url_and_auto_analyze_flag() -> None:
     assert app.auto_analyze is True
 
 
+def test_tui_accepts_missing_pipeline_for_first_run_onboarding() -> None:
+    app = ReviewTUI(
+        None,
+        pipeline_factory=lambda: ReviewPipeline(llm=MockLLMClient()),
+        credential_status=CredentialStatus(
+            has_deepseek_api_key=False,
+            has_openai_api_key=False,
+            has_tavily_api_key=False,
+            has_github_token=False,
+            dotenv_path=None,
+        ),
+    )
+
+    assert app.pipeline is None
+    assert app.credentials_required is True
+
+
 def test_tui_auto_analyzes_on_mount_when_initial_url_is_set(monkeypatch) -> None:
     app = ReviewTUI(
         ReviewPipeline(llm=MockLLMClient()),
@@ -56,6 +75,91 @@ def test_tui_auto_analyzes_on_mount_when_initial_url_is_set(monkeypatch) -> None
     asyncio.run(app.on_mount())
 
     assert calls == ["https://github.com/owner/repo/pull/1"]
+
+
+@pytest.mark.anyio
+async def test_tui_imports_deepseek_key_and_optional_keys(monkeypatch, tmp_path) -> None:
+    for key in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY", "TAVILY_API_KEY", "GITHUB_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    saved_values = {}
+    pipeline = ReviewPipeline(llm=MockLLMClient())
+    app = ReviewTUI(
+        None,
+        pipeline_factory=lambda: pipeline,
+        credential_status=CredentialStatus(
+            has_deepseek_api_key=False,
+            has_openai_api_key=False,
+            has_tavily_api_key=False,
+            has_github_token=False,
+            dotenv_path=None,
+        ),
+        credential_writer=lambda values: saved_values.update(values) or tmp_path / ".env",
+    )
+
+    async with app.run_test():
+        app.query_one("#setup-model-key", Input).value = "deepseek-key"
+        app.query_one("#setup-tavily-key", Input).value = "tavily-key"
+        app.query_one("#setup-github-token", Input).value = "github-token"
+
+        app._save_credentials("deepseek")
+
+    assert saved_values == {
+        "DEEPSEEK_API_KEY": "deepseek-key",
+        "TAVILY_API_KEY": "tavily-key",
+        "GITHUB_TOKEN": "github-token",
+    }
+    assert app.pipeline is pipeline
+    assert app.credentials_required is False
+
+
+@pytest.mark.anyio
+async def test_tui_requires_model_key_before_import(tmp_path) -> None:
+    saved_values = {}
+    app = ReviewTUI(
+        None,
+        pipeline_factory=lambda: ReviewPipeline(llm=MockLLMClient()),
+        credential_status=CredentialStatus(
+            has_deepseek_api_key=False,
+            has_openai_api_key=False,
+            has_tavily_api_key=False,
+            has_github_token=False,
+            dotenv_path=None,
+        ),
+        credential_writer=lambda values: saved_values.update(values) or tmp_path / ".env",
+    )
+
+    async with app.run_test():
+        app.query_one("#setup-model-key", Input).value = " "
+
+        app._save_credentials("openai")
+
+    assert saved_values == {}
+    assert app.pipeline is None
+    assert app.credentials_required is True
+
+
+@pytest.mark.anyio
+async def test_tui_analyze_without_saved_model_key_does_not_crash() -> None:
+    def missing_pipeline() -> ReviewPipeline:
+        raise RuntimeError("missing model key")
+
+    app = ReviewTUI(
+        None,
+        pipeline_factory=missing_pipeline,
+        credential_status=CredentialStatus(
+            has_deepseek_api_key=False,
+            has_openai_api_key=False,
+            has_tavily_api_key=False,
+            has_github_token=False,
+            dotenv_path=None,
+        ),
+    )
+
+    async with app.run_test():
+        await app._analyze()
+
+    assert app.pipeline is None
+    assert app.credentials_required is True
 
 
 def test_tui_can_switch_language_and_rerender_current_report(monkeypatch) -> None:

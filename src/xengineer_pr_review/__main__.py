@@ -7,6 +7,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from xengineer_pr_review.action_workflow import DEFAULT_ACTION_USES, init_action_workflow
+from xengineer_pr_review.credentials import (
+    format_missing_required_credentials_message,
+    read_credential_status,
+)
 from xengineer_pr_review.env import loaded_dotenv
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.github import GitHubClient
@@ -123,6 +127,9 @@ def _build_pipeline_or_error(parser: argparse.ArgumentParser, **kwargs) -> Revie
     try:
         return build_pipeline(**kwargs)
     except MissingModelConfigurationError as exc:
+        language = kwargs.get("language", "zh")
+        if str(exc) == MODEL_CONFIG_ERROR:
+            parser.error(format_missing_required_credentials_message(language))
         parser.error(str(exc))
 
 
@@ -238,13 +245,37 @@ def _run_main(argv: Sequence[str]) -> None:
 
     initial_pr_url = args.pr_url or (JUDGE_DEMO_URL if args.judge_demo else "")
     with loaded_dotenv():
-        ReviewTUI(
-            _build_pipeline_or_error(
+        credential_status = read_credential_status()
+        pipeline_factory = None
+        if not args.mock_llm and not args.judge_demo and not credential_status.has_model_key:
+            print(
+                format_missing_required_credentials_message(
+                    args.language,
+                    include_tui_onboarding=True,
+                ),
+                file=sys.stderr,
+            )
+            pipeline = None
+
+            def build_tui_pipeline() -> ReviewPipeline:
+                return build_pipeline(
+                    use_mock_llm=args.mock_llm,
+                    language=args.language,
+                    judge_demo=args.judge_demo,
+                )
+
+            pipeline_factory = build_tui_pipeline
+        else:
+            pipeline = _build_pipeline_or_error(
                 parser,
                 use_mock_llm=args.mock_llm,
                 language=args.language,
                 judge_demo=args.judge_demo,
-            ),
+            )
+        ReviewTUI(
+            pipeline,
+            pipeline_factory=pipeline_factory,
+            credential_status=credential_status,
             language=args.language,
             initial_pr_url=initial_pr_url,
             auto_analyze=args.judge_demo,

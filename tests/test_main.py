@@ -371,6 +371,37 @@ def test_main_refuses_real_review_without_model_key(monkeypatch) -> None:
     assert exc.value.code == 2
 
 
+def test_main_launches_tui_onboarding_when_model_key_is_missing(monkeypatch, capsys) -> None:
+    @contextmanager
+    def fake_loaded_dotenv() -> Iterator[None]:
+        yield None
+
+    launched = {}
+
+    class FakeTUI:
+        def __init__(self, pipeline, **kwargs) -> None:
+            launched["pipeline"] = pipeline
+            launched.update(kwargs)
+
+        def run(self) -> None:
+            launched["ran"] = True
+
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(main_module, "loaded_dotenv", fake_loaded_dotenv)
+    monkeypatch.setattr(main_module, "ReviewTUI", FakeTUI)
+
+    main_module.main([])
+
+    assert launched["ran"] is True
+    assert launched["pipeline"] is None
+    assert callable(launched["pipeline_factory"])
+    assert launched["credential_status"].has_model_key is False
+    error_output = capsys.readouterr().err
+    assert "DEEPSEEK_API_KEY" in error_output
+    assert "OPENAI_API_KEY" in error_output
+
+
 def test_main_refuses_publish_without_confirmation(monkeypatch) -> None:
     pipeline_built = False
 
