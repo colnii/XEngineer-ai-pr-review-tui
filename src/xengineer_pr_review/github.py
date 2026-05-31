@@ -21,6 +21,8 @@ from xengineer_pr_review.models import (
 
 
 MAX_FILE_CONTENT_BYTES = 1_000_000
+MAX_COMMENT_BODY_CHARS = 65_536
+COMMENT_TRUNCATION_NOTICE = "\n\n[Report truncated by XEngineer before publishing to GitHub.]"
 LOGGER = logging.getLogger(__name__)
 
 
@@ -84,7 +86,7 @@ class GitHubClient:
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/issues/{ref.number}/comments"
-        response = self.client.post(api_url, json={"body": body})
+        response = self.client.post(api_url, json={"body": _bounded_comment_body(body)})
         response.raise_for_status()
         payload = response.json()
         return PostedComment(html_url=payload.get("html_url", ""))
@@ -98,7 +100,10 @@ class GitHubClient:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}/reviews"
         response = self.client.post(
             api_url,
-            json={"body": body, "event": _review_action_event(review_action)},
+            json={
+                "body": _bounded_comment_body(body),
+                "event": _review_action_event(review_action),
+            },
         )
         response.raise_for_status()
         payload = response.json()
@@ -265,6 +270,13 @@ def _user_login(payload: dict) -> str:
 
 def _clean_body(value: object) -> str:
     return str(value or "").strip()
+
+
+def _bounded_comment_body(body: str) -> str:
+    if len(body) <= MAX_COMMENT_BODY_CHARS:
+        return body
+    keep_chars = MAX_COMMENT_BODY_CHARS - len(COMMENT_TRUNCATION_NOTICE)
+    return body[:keep_chars].rstrip() + COMMENT_TRUNCATION_NOTICE
 
 
 def _review_action_event(review_action: ReviewAction) -> str:

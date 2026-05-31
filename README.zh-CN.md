@@ -293,6 +293,7 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 - 已支持 `--comment-mode review` 发布 PR review 正文；也支持显式使用
   `--review-action approve` 或 `--review-action request-changes` 进入 review 门禁流程。
   暂不支持行内 review comment。
+- 发布到 GitHub 的评论正文会在发送前做长度上限截断，避免超长报告触发 GitHub API 校验失败。
 - 没有仓库级语义索引。
 - 工具调用有轮数和输出限制；如果模型触达限制或工具失败，报告会显示 warning。
 

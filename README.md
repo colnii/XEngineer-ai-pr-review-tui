@@ -307,6 +307,8 @@ When a real model is configured, the LangGraph agent can request extra context w
 - Pull request review body comments are supported with `--comment-mode review`.
   `--review-action approve` and `--review-action request-changes` are available
   for explicit review-gating workflows, but inline review comments are not implemented.
+- Published GitHub comment bodies are capped before sending to avoid GitHub API
+  validation failures on oversized reports.
 - No repository-wide semantic indexing.
 - Tool calls are bounded; if the model hits a tool limit or a tool fails, the report includes a warning.
 
