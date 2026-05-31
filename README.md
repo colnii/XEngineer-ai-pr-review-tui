@@ -27,6 +27,8 @@ to verify the product flow, report structure, risk signals, suggestions, and Mar
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
+# Normal PR review requires a DeepSeek or OpenAI key.
+export OPENAI_API_KEY="..."
 xpr-review
 ```
 
@@ -50,17 +52,14 @@ the `socksio` dependency is installed.
 
 ## Usage
 
-```bash
-xpr-review --mock-llm
-```
-
-For a non-interactive command-line review, pass a PR URL and an output target.
+After configuring a real model key, pass a PR URL and an output target for a
+non-interactive command-line review.
 Use `--output -` to print the Markdown report to stdout, or pass a file path
 to write the report:
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --mock-llm --output -
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --mock-llm --output review-report.md
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --output -
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --output review-report.md
 ```
 
 The zero-configuration judge demo also supports the same headless path:
@@ -110,7 +109,7 @@ repository PR, provide a GitHub token:
 
 ```bash
 # Edit .env and set GITHUB_TOKEN, or keep using gh auth login.
-xpr-review --mock-llm
+xpr-review
 ```
 
 You can also use `GH_TOKEN`, or run `gh auth login` so the app can read the local
@@ -145,7 +144,6 @@ trusted for merge gating. Review mode requires `Pull requests: write`; conversat
 comment mode requires `Issues: write`. Strict tokens should also grant
 `Issues: read` when review mode needs PR conversation history in the analysis context.
 
-For deterministic local testing, add `--mock-llm` to publish the mock report body.
 In non-interactive automation, `--auto-publish` can be used instead of
 `--confirm-publish` to make the intent explicit.
 
@@ -208,8 +206,8 @@ older bot comments and does not run on every pushed commit unless that command c
 Keep `issues: write` for conversation comments. When using review mode, keep
 `issues: read` for PR conversation history and `pull-requests: write` for the
 review body. Configure `DEEPSEEK_API_KEY` or
-`OPENAI_API_KEY` as a repository secret for real model output; without a model
-key, the CLI falls back to deterministic mock output.
+`OPENAI_API_KEY` as a repository secret for real model output. Without a model
+key, the Action fails and does not publish a review.
 
 After installing the CLI, you can generate the same workflow instead of writing
 YAML by hand:
@@ -223,25 +221,6 @@ If you run the command inside the target repository, omit `--repo-path`. Use
 body comments, `--review-action comment|approve|request-changes` to choose the
 review state, `--action-uses owner/repo@ref` to point at a fork, branch, or
 release tag, and `--overwrite` only when replacing an existing generated workflow.
-
-### Live AI Review Acceptance Test
-
-The repository includes a skipped-by-default live acceptance test for validating that a
-real model review of a target PR keeps evidence references hydrated, without `read_file`
-404 warnings or fake `F1` path links. It consumes model quota and reads a live GitHub PR,
-so it must be enabled explicitly:
-
-```bash
-export DEEPSEEK_API_KEY="..."  # or OPENAI_API_KEY
-export XENGINEER_RUN_LIVE_AI_REVIEW_TEST=1
-export XENGINEER_LIVE_AI_REVIEW_PR_URL="https://github.com/owner/repo/pull/1"
-export XENGINEER_LIVE_AI_REVIEW_REPORT_PATH="live-ai-review.md"  # optional Markdown output
-.venv/bin/python -m pytest tests/test_live_ai_review.py
-```
-
-If both DeepSeek and OpenAI keys are configured, the app follows its normal provider
-priority and uses DeepSeek first. To validate the OpenAI path specifically, prefix the
-command with `DEEPSEEK_API_KEY=`.
 
 Paste a PR URL such as:
 
@@ -285,8 +264,9 @@ project `.env` before building the review pipeline; values in `.env` override te
 exports for that command. Copy `.env.example` to `.env` for local credentials. The `.env`
 file is ignored by git and should not be committed.
 
-The app also supports `--mock-llm` for deterministic local review output. For judges,
-`--judge-demo` is the zero-configuration path and does not require model or GitHub credentials.
+For judges, `--judge-demo` is the zero-configuration path and does not require model or
+GitHub credentials. Normal PR review requires a DeepSeek or OpenAI key; without a model
+key, the app does not generate a review.
 
 ## Context Strategy
 

@@ -16,6 +16,8 @@ def test_action_metadata_runs_xpr_review_publish_comment() -> None:
     assert "inputs.review-action" in metadata
     assert "--auto-publish" in metadata
     assert "--confirm-publish" not in metadata
+    assert "mock-llm" not in metadata
+    assert "A DeepSeek or OpenAI API key is required" in metadata
     assert "github.event.pull_request.html_url" in metadata
     assert "github.event.issue.number" in metadata
     assert "https://github.com/{0}/pull/{1}" in metadata

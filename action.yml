@@ -26,10 +26,6 @@ inputs:
     description: Report language, either zh or en.
     required: false
     default: zh
-  mock-llm:
-    description: Use deterministic mock LLM output.
-    required: false
-    default: "false"
   deepseek-api-key:
     description: DeepSeek API key for real model review.
     required: false
@@ -82,6 +78,10 @@ runs:
         if [ -n "${XENGINEER_TAVILY_API_KEY}" ]; then
           export TAVILY_API_KEY="${XENGINEER_TAVILY_API_KEY}"
         fi
+        if [ -z "${DEEPSEEK_API_KEY:-}" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
+          echo "A DeepSeek or OpenAI API key is required for real PR review." >&2
+          exit 2
+        fi
 
         args=(
           python
@@ -94,9 +94,5 @@ runs:
           --auto-publish
           --language "${{ inputs.language }}"
         )
-
-        if [ "${{ inputs.mock-llm }}" = "true" ]; then
-          args+=(--mock-llm)
-        fi
 
         "${args[@]}"

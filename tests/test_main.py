@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import xengineer_pr_review.__main__ as main_module
-from xengineer_pr_review.__main__ import build_pipeline
+from xengineer_pr_review.__main__ import MissingModelConfigurationError, build_pipeline
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
 from xengineer_pr_review.langgraph_agent import LangGraphReviewClient
 from xengineer_pr_review.llm import MockLLMClient
@@ -27,6 +27,14 @@ def test_build_pipeline_passes_language_to_mock_llm() -> None:
 
     assert isinstance(pipeline.llm, MockLLMClient)
     assert pipeline.llm.language == "en"
+
+
+def test_build_pipeline_requires_real_model_key_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(MissingModelConfigurationError, match="Real model review requires"):
+        build_pipeline()
 
 
 def test_build_pipeline_uses_langgraph_deepseek_when_deepseek_key_is_configured(
@@ -348,6 +356,16 @@ def test_main_refuses_empty_output_path(monkeypatch) -> None:
     assert pipeline_built is False
 
 
+def test_main_refuses_real_review_without_model_key(monkeypatch) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(["--pr-url", PR_URL, "--output", "-"])
+
+    assert exc.value.code == 2
+
+
 def test_main_refuses_publish_without_confirmation(monkeypatch) -> None:
     pipeline_built = False
 
@@ -436,7 +454,9 @@ def test_main_help_lists_init_action(capsys) -> None:
         main_module.main(["--help"])
 
     assert exc.value.code == 0
-    assert "init-action" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "init-action" in output
+    assert "--mock-llm" not in output
 
 
 def test_main_init_action_works_from_console_argv(monkeypatch, tmp_path) -> None:
