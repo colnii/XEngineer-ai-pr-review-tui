@@ -20,6 +20,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
 
     assert "types: [opened, reopened, ready_for_review]" in workflow
     assert "synchronize" not in workflow
+    assert "Use /xengineer review to rerun after new commits" in workflow
     assert "uses: owner/xengineer@v1" in workflow
     assert "github-token: ${{ github.token }}" in workflow
     assert "comment-mode: review" in workflow
@@ -37,6 +38,7 @@ def test_render_action_workflow_supports_manual_pr_comment_command() -> None:
     assert "types: [created]" in workflow
     assert "github.event_name == 'issue_comment'" in workflow
     assert "github.event.issue.pull_request" in workflow
+    assert "github.event.issue.state == 'open'" in workflow
     assert "github.event.comment.author_association == 'OWNER'" in workflow
     assert "github.event.comment.author_association == 'MEMBER'" in workflow
     assert "github.event.comment.author_association == 'COLLABORATOR'" in workflow
@@ -88,3 +90,23 @@ def test_init_action_workflow_can_overwrite_existing_file(tmp_path: Path) -> Non
 
     assert written_path == workflow_path
     assert DEFAULT_ACTION_USES in workflow_path.read_text(encoding="utf-8")
+
+
+def test_repository_installs_pr_review_workflow() -> None:
+    workflow_path = Path(__file__).resolve().parents[1] / WORKFLOW_RELATIVE_PATH
+
+    workflow = workflow_path.read_text(encoding="utf-8")
+
+    assert "pull_request:" in workflow
+    assert "issue_comment:" in workflow
+    assert f"uses: {DEFAULT_ACTION_USES}" in workflow
+    assert "github-token: ${{ github.token }}" in workflow
+    assert "deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}" in workflow
+    assert "openai-api-key: ${{ secrets.OPENAI_API_KEY }}" in workflow
+    assert "tavily-api-key: ${{ secrets.TAVILY_API_KEY }}" in workflow
+    assert "review-action: comment" in workflow
+    assert "language: zh" in workflow
+    assert "comment-mode: conversation" in workflow
+    assert "issues: write" in workflow
+    assert "pull-requests: write" in workflow
+    assert "Use /xengineer review to rerun after new commits" in workflow

@@ -18,6 +18,7 @@ def render_action_workflow(
 
 on:
   pull_request:
+    # Use /xengineer review to rerun after new commits without posting on every push.
     types: [opened, reopened, ready_for_review]
   issue_comment:
     types: [created]
@@ -36,6 +37,7 @@ jobs:
         (
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
+          github.event.issue.state == 'open' &&
           (
             github.event.comment.author_association == 'OWNER' ||
             github.event.comment.author_association == 'MEMBER' ||
