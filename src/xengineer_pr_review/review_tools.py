@@ -20,6 +20,7 @@ MAX_GREP_RESULTS = 20
 MAX_CACHED_FILES = 40
 DEFAULT_PR_ACTIVITY_TOOL_ITEMS = 200
 MAX_PR_ACTIVITY_TOOL_ITEMS = 300
+MAX_PR_ACTIVITY_SNIPPET_CHARS = 500
 
 
 class GitHubReadLike(Protocol):
@@ -46,6 +47,7 @@ class ReviewToolbox:
         repr=False,
     )
     web_sources: list[EvidenceReference] = field(default_factory=list, init=False)
+    activity_sources: list[EvidenceReference] = field(default_factory=list, init=False)
 
     def read_file(
         self,
@@ -181,14 +183,25 @@ class ReviewToolbox:
             minimum=1,
             maximum=MAX_PR_ACTIVITY_TOOL_ITEMS,
         )
-        selected = (
-            self.activities
-            if normalized_kind == "all"
-            else tuple(activity for activity in self.activities if activity.kind == normalized_kind)
+        selected = tuple(
+            (index, activity)
+            for index, activity in enumerate(self.activities, start=1)
+            if normalized_kind == "all" or activity.kind == normalized_kind
         )
         if not selected:
             return f"read_pr_activity found no {normalized_kind} PR activity items."
-        lines = format_pr_activity_lines(selected, max_items=max_items)
+        shown = selected[:max_items]
+        lines: list[str] = []
+        for index, activity in shown:
+            citation_id = f"A{index}"
+            display_line = _activity_display_line(activity)
+            self._record_activity_source(citation_id, display_line, activity)
+            lines.append(
+                f"[{citation_id}] {display_line}\n"
+                f"   Use citation id [{citation_id}] with this PR activity item."
+            )
+        if len(selected) > max_items:
+            lines.append(f"- [truncated {len(selected) - max_items} additional PR activity items]")
         return "\n".join(
             [
                 (
@@ -197,6 +210,25 @@ class ReviewToolbox:
                 ),
                 *lines,
             ]
+        )
+
+    def _record_activity_source(
+        self,
+        citation_id: str,
+        display_line: str,
+        activity: PullRequestActivity,
+    ) -> None:
+        if any(source.label == citation_id for source in self.activity_sources):
+            return
+        title = display_line.split(": ", 1)[0]
+        self.activity_sources.append(
+            EvidenceReference(
+                kind="pr_activity",
+                label=citation_id,
+                title=title,
+                url=activity.url,
+                snippet=_activity_snippet(activity),
+            )
         )
 
     def web_search(self, query: str, max_results: int = 3) -> str:
@@ -288,6 +320,18 @@ def default_web_searcher() -> WebSearchLike | None:
     if not os.environ.get("TAVILY_API_KEY"):
         return None
     return TavilyWebSearchClient()
+
+
+def _activity_display_line(activity: PullRequestActivity) -> str:
+    line = format_pr_activity_lines((activity,), max_items=1)[0]
+    return line.removeprefix("- ")
+
+
+def _activity_snippet(activity: PullRequestActivity) -> str:
+    cleaned = " ".join(activity.body.split())
+    if len(cleaned) <= MAX_PR_ACTIVITY_SNIPPET_CHARS:
+        return cleaned
+    return cleaned[:MAX_PR_ACTIVITY_SNIPPET_CHARS].rstrip() + " [truncated]"
 
 
 def _filter_search_paths(paths: list[str], path_glob: str | None) -> list[str]:

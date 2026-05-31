@@ -113,6 +113,7 @@ class ActivityGitHubClient(FakeGitHubClient):
                     author="reviewer",
                     body="Please inspect the prior PR discussion before reviewing.",
                     created_at="2026-05-30T10:00:00Z",
+                    url="https://github.com/owner/repo/pull/1#issuecomment-10",
                 ),
             ),
         )
@@ -195,7 +196,19 @@ class ActivityToolAwareLLMClient:
     def analyze(self, prompt: str, toolbox=None) -> LLMResult:
         assert toolbox is not None
         self.activity_output = toolbox.read_pr_activity(kind="conversation", max_items=5)
-        return LLMResult(summary="AI summary with PR activity tool")
+        return LLMResult(
+            summary="AI summary with PR activity tool",
+            risks=[
+                ReviewFinding(
+                    severity="low",
+                    source="ai",
+                    title="Prior discussion still applies",
+                    explanation="The model cited the fetched PR activity item.",
+                    files=[],
+                    evidence=[EvidenceReference(kind="pr_activity", label="A1")],
+                )
+            ],
+        )
 
 
 class FileIdToolAwareLLMClient:
@@ -365,7 +378,15 @@ def test_pipeline_passes_pr_activity_to_review_toolbox() -> None:
 
     assert report.summary == "AI summary with PR activity tool"
     assert "PR activity history (conversation" in llm.activity_output
+    assert "[A1] conversation by reviewer" in llm.activity_output
     assert "Please inspect the prior PR discussion before reviewing." in llm.activity_output
+    finding = next(finding for finding in report.findings if finding.title == "Prior discussion still applies")
+    evidence = finding.evidence[0]
+    assert evidence.kind == "pr_activity"
+    assert evidence.label == "A1"
+    assert evidence.title == "conversation by reviewer at 2026-05-30T10:00:00Z"
+    assert evidence.url == "https://github.com/owner/repo/pull/1#issuecomment-10"
+    assert evidence.snippet == "Please inspect the prior PR discussion before reviewing."
 
 
 def test_pipeline_exposes_file_ids_and_hydrates_file_id_evidence() -> None:

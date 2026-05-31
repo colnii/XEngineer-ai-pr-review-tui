@@ -318,6 +318,37 @@ def test_read_pr_activity_filters_and_formats_activity_history() -> None:
     assert "Please rerun after the latest push." not in result
 
 
+def test_read_pr_activity_emits_citation_ids_and_records_activity_sources() -> None:
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        activities=(
+            PullRequestActivity(
+                kind="conversation",
+                author="reviewer",
+                body="Please rerun after the latest push.",
+                created_at="2026-05-30T10:00:00Z",
+                url="https://github.com/owner/repo/pull/1#issuecomment-10",
+            ),
+        ),
+    )
+
+    result = toolbox.read_pr_activity(kind="conversation", max_items=1)
+
+    assert "[A1] conversation by reviewer at 2026-05-30T10:00:00Z" in result
+    assert "Use citation id [A1]" in result
+    assert toolbox.activity_sources[0].kind == "pr_activity"
+    assert toolbox.activity_sources[0].label == "A1"
+    assert toolbox.activity_sources[0].title == (
+        "conversation by reviewer at 2026-05-30T10:00:00Z"
+    )
+    assert toolbox.activity_sources[0].url == (
+        "https://github.com/owner/repo/pull/1#issuecomment-10"
+    )
+    assert toolbox.activity_sources[0].snippet == "Please rerun after the latest push."
+
+
 def test_read_pr_activity_defaults_to_initial_context_item_budget() -> None:
     activities = tuple(
         PullRequestActivity(kind="commit", author="alice", body=f"commit {index}")

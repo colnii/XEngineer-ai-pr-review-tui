@@ -173,6 +173,11 @@ class ReviewPipeline:
         )
         result = self.llm.analyze(prompt, toolbox=toolbox)
         _hydrate_web_evidence(result.risks, result.suggestions, toolbox.web_sources)
+        _hydrate_pr_activity_evidence(
+            result.risks,
+            result.suggestions,
+            toolbox.activity_sources,
+        )
         return result
 
 
@@ -284,6 +289,38 @@ def _hydrate_web_evidence(
         hydrated: list[EvidenceReference] = []
         for reference in item.evidence:
             if reference.kind != "web":
+                hydrated.append(reference)
+                continue
+            source = by_label.get(reference.label) or by_url.get(reference.url)
+            if source is None:
+                hydrated.append(reference)
+                continue
+            hydrated.append(
+                reference.model_copy(
+                    update={
+                        "label": reference.label or source.label,
+                        "url": reference.url or source.url,
+                        "title": reference.title or source.title,
+                        "snippet": reference.snippet or source.snippet,
+                    }
+                )
+            )
+        item.evidence = hydrated
+
+
+def _hydrate_pr_activity_evidence(
+    findings: list[ReviewFinding],
+    suggestions: list[ReviewSuggestion],
+    activity_sources: list[EvidenceReference],
+) -> None:
+    if not activity_sources:
+        return
+    by_label = {source.label: source for source in activity_sources if source.label}
+    by_url = {source.url: source for source in activity_sources if source.url}
+    for item in [*findings, *suggestions]:
+        hydrated: list[EvidenceReference] = []
+        for reference in item.evidence:
+            if reference.kind != "pr_activity":
                 hydrated.append(reference)
                 continue
             source = by_label.get(reference.label) or by_url.get(reference.url)
