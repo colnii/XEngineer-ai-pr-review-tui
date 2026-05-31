@@ -58,6 +58,13 @@ class GitHubClient:
         payload = response.json()
         return PostedComment(html_url=payload.get("html_url", ""))
 
+    def post_pr_review(self, ref: PullRequestRef, body: str) -> PostedComment:
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}/reviews"
+        response = self.client.post(api_url, json={"body": body, "event": "COMMENT"})
+        response.raise_for_status()
+        payload = response.json()
+        return PostedComment(html_url=payload.get("html_url", ""))
+
     def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str:
         encoded_path = quote(path.strip("/"), safe="/")
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/contents/{encoded_path}"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol, TypeGuard
+from typing import Any, Literal, Protocol, TypeGuard
 from urllib.parse import quote
 
 from xengineer_pr_review.context import build_llm_context
@@ -23,6 +23,7 @@ from xengineer_pr_review.rules import analyze_rules
 
 
 LOGGER = logging.getLogger(__name__)
+CommentMode = Literal["conversation", "review"]
 
 
 class GitHubLike(Protocol):
@@ -33,6 +34,10 @@ class GitHubLike(Protocol):
 class GitHubReadLike(GitHubLike, Protocol):
     def fetch_file_text(self, ref: PullRequestRef, path: str, git_ref: str) -> str: ...
     def fetch_tree_paths(self, ref: PullRequestRef, git_ref: str) -> list[str]: ...
+
+
+class GitHubReviewLike(GitHubLike, Protocol):
+    def post_pr_review(self, ref: PullRequestRef, body: str): ...
 
 
 class LLMLike(Protocol):
@@ -100,9 +105,18 @@ class ReviewPipeline:
             raw_ai_output=raw_ai_output,
         )
 
-    def post_review_comment(self, pr_url: str, body: str):
+    def post_review_comment(
+        self,
+        pr_url: str,
+        body: str,
+        comment_mode: CommentMode = "conversation",
+    ):
         ref = parse_pr_url(pr_url)
-        return self.github.post_pr_comment(ref, body)
+        if comment_mode == "conversation":
+            return self.github.post_pr_comment(ref, body)
+        if comment_mode == "review" and _github_supports_pr_reviews(self.github):
+            return self.github.post_pr_review(ref, body)
+        raise ValueError(f"Unsupported PR comment mode: {comment_mode}")
 
     def _analyze_with_optional_tools(
         self,
@@ -129,6 +143,10 @@ class ReviewPipeline:
 
 def _github_supports_read_tools(github: GitHubLike) -> TypeGuard[GitHubReadLike]:
     return hasattr(github, "fetch_file_text") and hasattr(github, "fetch_tree_paths")
+
+
+def _github_supports_pr_reviews(github: GitHubLike) -> TypeGuard[GitHubReviewLike]:
+    return hasattr(github, "post_pr_review")
 
 
 def _enrich_review_item_evidence(

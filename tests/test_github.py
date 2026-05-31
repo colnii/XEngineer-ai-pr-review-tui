@@ -174,6 +174,37 @@ def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
     ]
 
 
+def test_post_pr_review_posts_markdown_to_pull_reviews(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[tuple[str, str | None, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(
+            (
+                str(request.url),
+                request.headers.get("authorization"),
+                json.loads(request.content.decode()),
+            )
+        )
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-9"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(PullRequestRef("owner", "repo", 1), "# Report")
+
+    assert result.html_url == "https://github.com/owner/repo/pull/1#pullrequestreview-9"
+    assert requests == [
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/reviews",
+            "Bearer write-token",
+            {"body": "# Report", "event": "COMMENT"},
+        )
+    ]
+
+
 def test_fetch_file_text_reads_content_at_requested_ref(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
     seen_requests: list[tuple[str, str | None]] = []

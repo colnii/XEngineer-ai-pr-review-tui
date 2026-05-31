@@ -11,12 +11,17 @@ from xengineer_pr_review.action_workflow import (
 
 
 def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> None:
-    workflow = render_action_workflow(action_uses="owner/xengineer@v1", language="en")
+    workflow = render_action_workflow(
+        action_uses="owner/xengineer@v1",
+        comment_mode="review",
+        language="en",
+    )
 
     assert "types: [opened, reopened, ready_for_review]" in workflow
     assert "synchronize" not in workflow
     assert "uses: owner/xengineer@v1" in workflow
     assert "github-token: ${{ github.token }}" in workflow
+    assert "comment-mode: review" in workflow
     assert "language: en" in workflow
     assert "issues: write" not in workflow
     assert "pull-requests: write" in workflow
@@ -30,6 +35,7 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
     written_path = init_action_workflow(
         repo_path=tmp_path,
         action_uses="owner/xengineer@v1",
+        comment_mode="review",
         language="zh",
     )
 
@@ -37,6 +43,7 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
     assert written_path.exists()
     workflow = written_path.read_text(encoding="utf-8")
     assert "uses: owner/xengineer@v1" in workflow
+    assert "comment-mode: review" in workflow
     assert "language: zh" in workflow
 
 

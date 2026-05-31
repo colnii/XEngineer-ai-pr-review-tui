@@ -1,5 +1,5 @@
 name: XEngineer PR Review
-description: Review a GitHub pull request with XEngineer and publish one PR conversation comment.
+description: Review a GitHub pull request with XEngineer and publish one PR comment.
 
 branding:
   icon: git-pull-request
@@ -11,9 +11,13 @@ inputs:
     required: false
     default: ""
   github-token:
-    description: GitHub token used to read the PR and publish the PR conversation comment.
+    description: GitHub token used to read the PR and publish the PR comment.
     required: false
     default: ""
+  comment-mode:
+    description: Comment target, either conversation or review.
+    required: false
+    default: conversation
   language:
     description: Report language, either zh or en.
     required: false
@@ -81,6 +85,7 @@ runs:
           xengineer_pr_review
           --pr-url "${PR_URL}"
           --publish-comment
+          --comment-mode "${{ inputs.comment-mode }}"
           --auto-publish
           --language "${{ inputs.language }}"
         )

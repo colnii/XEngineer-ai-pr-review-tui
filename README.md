@@ -41,9 +41,10 @@ the `socksio` dependency is installed.
 - LLM-assisted summary and suggestions.
 - Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
 - Markdown export.
-- Manual PR conversation comment publishing after human confirmation.
-- GitHub Action integration that publishes one top-level PR conversation comment when a PR is
-  opened, reopened, or marked ready for review.
+- Manual PR conversation comment publishing after human confirmation, with an optional
+  pull request review body mode.
+- GitHub Action integration that publishes one PR comment when a PR is opened, reopened,
+  or marked ready for review.
 
 ## Usage
 
@@ -127,6 +128,13 @@ explicit confirmation flag because there is no TUI preview step:
 xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
 ```
 
+To publish the same Markdown report as a pull request review body instead, select
+review mode:
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
+```
+
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
 In non-interactive automation, `--auto-publish` can be used instead of
 `--confirm-publish` to make the intent explicit.
@@ -157,6 +165,7 @@ jobs:
         with:
           pr-url: ${{ github.event.pull_request.html_url }}
           github-token: ${{ github.token }}
+          comment-mode: conversation
           language: en
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -164,7 +173,8 @@ jobs:
 ```
 
 The default workflow publishes one new PR conversation comment after the PR is
-opened, reopened, or moved out of draft. It does not edit older bot comments and
+opened, reopened, or moved out of draft. Set `comment-mode: review` to publish
+the report as a pull request review body instead. It does not edit older bot comments and
 does not run on every pushed commit. Configure `DEEPSEEK_API_KEY` or
 `OPENAI_API_KEY` as a repository secret for real model output; without a model
 key, the CLI falls back to deterministic mock output.
@@ -177,8 +187,9 @@ xpr-review init-action --repo-path /path/to/target/repo --language en
 ```
 
 If you run the command inside the target repository, omit `--repo-path`. Use
-`--action-uses owner/repo@ref` to point at a fork, branch, or release tag, and
-`--overwrite` only when replacing an existing generated workflow.
+`--comment-mode review` to generate a workflow that publishes pull request review
+body comments, `--action-uses owner/repo@ref` to point at a fork, branch, or
+release tag, and `--overwrite` only when replacing an existing generated workflow.
 
 ### Live AI Review Acceptance Test
 
@@ -265,9 +276,10 @@ When a real model is configured, the LangGraph agent can request extra context w
 
 - Private repository PRs require a local token with read access; GitHub may return
   404 when the token cannot access the repository.
-- GitHub Action comments are top-level PR conversation comments only. The default generated
+- GitHub Action comments default to top-level PR conversation comments. The generated
   workflow publishes a new comment per trigger and does not edit an older XEngineer comment.
-- Inline review comments and approve/request-changes review states are not implemented.
+- Pull request review body comments are supported with `--comment-mode review`, but inline
+  review comments and approve/request-changes review states are not implemented.
 - No repository-wide semantic indexing.
 - Tool calls are bounded; if the model hits a tool limit or a tool fails, the report includes a warning.
 
@@ -276,5 +288,5 @@ When a real model is configured, the LangGraph agent can request extra context w
 - One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
   backed by a small Node wrapper around the packaged Python app.
 - Web UI using the same review core.
-- Pull request review mode with optional inline comments after GitHub inline-position mapping is implemented.
+- Optional inline review comments after GitHub inline-position mapping is implemented.
 - Configurable organization-specific review rules.

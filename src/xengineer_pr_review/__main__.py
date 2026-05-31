@@ -22,7 +22,7 @@ from xengineer_pr_review.llm import (
 )
 from xengineer_pr_review.locale import normalize_language
 from xengineer_pr_review.models import ReviewReport
-from xengineer_pr_review.pipeline import ReviewPipeline
+from xengineer_pr_review.pipeline import CommentMode, ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
 
 
@@ -70,11 +70,16 @@ def _max_tool_rounds_from_env() -> int:
     return max(1, parsed)
 
 
-def publish_review_comment(pipeline: ReviewPipeline, pr_url: str, language: str) -> str:
+def publish_review_comment(
+    pipeline: ReviewPipeline,
+    pr_url: str,
+    language: str,
+    comment_mode: CommentMode = "conversation",
+) -> str:
     report, markdown = analyze_review_report(pipeline, pr_url, language)
     if report.llm_status == "failed":
         raise RuntimeError("LLM analysis failed; PR comment was not published.")
-    posted = pipeline.post_review_comment(pr_url, markdown)
+    posted = pipeline.post_review_comment(pr_url, markdown, comment_mode=comment_mode)
     return posted.html_url
 
 
@@ -116,7 +121,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--publish-comment",
         action="store_true",
-        help="Analyze --pr-url and publish the report as a PR conversation comment",
+        help="Analyze --pr-url and publish the report as a PR comment",
+    )
+    parser.add_argument(
+        "--comment-mode",
+        choices=("conversation", "review"),
+        default="conversation",
+        help="Comment publish target, default: conversation",
     )
     parser.add_argument(
         "--confirm-publish",
@@ -161,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             ),
             args.pr_url,
             args.language,
+            comment_mode=args.comment_mode,
         )
         print(f"Published PR comment: {url}")
         return
@@ -211,6 +223,12 @@ def _add_init_action_subcommand(parser: argparse.ArgumentParser) -> argparse.Arg
         help="Action reference used in the generated workflow",
     )
     init_action_parser.add_argument(
+        "--comment-mode",
+        choices=("conversation", "review"),
+        default="conversation",
+        help="Comment target used in the generated workflow, default: conversation",
+    )
+    init_action_parser.add_argument(
         "--language",
         choices=("zh", "en"),
         default="zh",
@@ -229,6 +247,7 @@ def _run_init_action(args: argparse.Namespace, parser: argparse.ArgumentParser) 
         workflow_path = init_action_workflow(
             repo_path=args.repo_path,
             action_uses=args.action_uses,
+            comment_mode=args.comment_mode,
             language=args.language,
             overwrite=args.overwrite,
         )
