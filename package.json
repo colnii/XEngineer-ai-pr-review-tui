@@ -8,6 +8,7 @@
   "files": [
     "bin/",
     "src/xengineer_pr_review/*.py",
+    "src/xengineer_pr_review/**/*.py",
     "pyproject.toml",
     "README.md",
     "README.zh-CN.md",
@@ -15,8 +16,8 @@
   ],
   "scripts": {
     "test": "node --test tests/npm-wrapper.test.js",
-    "test:python": "python -m pytest",
-    "test:all": "npm test && python -m pytest"
+    "test:python": "python3 -m pytest",
+    "test:all": "npm test && python3 -m pytest"
   },
   "engines": {
     "node": ">=18"

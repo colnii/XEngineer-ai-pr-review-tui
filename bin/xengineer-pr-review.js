@@ -122,8 +122,26 @@ function spawnChecked(command, args, label, options) {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`Failed to ${label} (exit ${result.status ?? "unknown"}).`);
+    throw new Error(`Failed to ${label} (${spawnFailureDetail(result)}).`);
   }
+}
+
+function spawnFailureDetail(result) {
+  if (result.status !== null && result.status !== undefined) {
+    return `exit ${result.status}`;
+  }
+  if (result.signal) {
+    return `signal ${result.signal}`;
+  }
+  return "exit unknown";
+}
+
+function isVenvHealthy(pythonPath, env, spawnSync) {
+  const result = spawnSync(pythonPath, ["-c", "import xengineer_pr_review"], {
+    encoding: "utf8",
+    env,
+  });
+  return !result.error && result.status === 0;
 }
 
 function ensureVenv(options = {}) {
@@ -147,9 +165,10 @@ function ensureVenv(options = {}) {
 
   if (fs.existsSync(pythonPath) && fs.existsSync(markerPath)) {
     const currentMarker = fs.readFileSync(markerPath, "utf8");
-    if (currentMarker === expectedMarker) {
+    if (currentMarker === expectedMarker && isVenvHealthy(pythonPath, env, spawnSync)) {
       return pythonPath;
     }
+    fs.rmSync(venvDir, { recursive: true, force: true });
   }
 
   const python = findPython({ env, spawnSync });
