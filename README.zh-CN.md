@@ -160,6 +160,11 @@ jobs:
         (
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
+          (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          ) &&
           contains(github.event.comment.body, '/xengineer review')
         )
       }}
@@ -178,7 +183,7 @@ jobs:
 ```
 
 默认 workflow 会在 PR 创建、重新打开、从 draft 变成 ready for review，或有人在 PR 页面评论
-`/xengineer review` 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
+`/xengineer review` 且该评论者是 owner、member 或 collaborator 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
 `comment-mode: review`。`review-action` 默认是 `comment`，也可以显式设为 `approve` 或
 `request-changes`，用于需要进入合并门禁的 workflow。使用 review 模式时保留 workflow 里的
 `pull-requests: write` 权限。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次

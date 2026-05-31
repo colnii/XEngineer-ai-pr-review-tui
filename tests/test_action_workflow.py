@@ -36,6 +36,9 @@ def test_render_action_workflow_supports_manual_pr_comment_command() -> None:
     assert "types: [created]" in workflow
     assert "github.event_name == 'issue_comment'" in workflow
     assert "github.event.issue.pull_request" in workflow
+    assert "github.event.comment.author_association == 'OWNER'" in workflow
+    assert "github.event.comment.author_association == 'MEMBER'" in workflow
+    assert "github.event.comment.author_association == 'COLLABORATOR'" in workflow
     assert "contains(github.event.comment.body, '/xengineer review')" in workflow
     assert "format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number)" in workflow
 

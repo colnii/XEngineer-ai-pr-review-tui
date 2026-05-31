@@ -259,6 +259,40 @@ def test_fetch_pr_continues_when_one_activity_endpoint_fails(monkeypatch, caplog
     assert "Failed to fetch PR conversation comments" in caplog.text
 
 
+def test_fetch_pr_activity_pagination_is_bounded(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        requests.append(url)
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": f"{index:07d}",
+                        "commit": {"message": f"commit {index}", "author": {"name": "Alice"}},
+                    }
+                    for index in range(100)
+                ],
+                headers={
+                    "Link": (
+                        '<https://api.github.com/repos/owner/repo/pulls/1/commits'
+                        '?page=2&per_page=100>; rel="next"'
+                    )
+                },
+            )
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert len([activity for activity in pr.activities if activity.kind == "commit"]) == 100
+    assert not any("page=2" in request for request in requests)
+
+
 def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "write-token")
     requests: list[tuple[str, str | None, dict]] = []

@@ -22,6 +22,7 @@ from xengineer_pr_review.models import (
 
 MAX_FILE_CONTENT_BYTES = 1_000_000
 MAX_COMMENT_BODY_CHARS = 65_536
+MAX_PR_ACTIVITY_ITEMS_PER_KIND = 100
 COMMENT_TRUNCATION_NOTICE = "\n\n[Report truncated by XEngineer before publishing to GitHub.]"
 LOGGER = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class GitHubClient:
         for activity_name, fetcher in activity_fetchers:
             try:
                 activities.extend(fetcher(ref))
-            except httpx.HTTPError as exc:
+            except (httpx.HTTPError, ValueError) as exc:
                 LOGGER.warning(
                     "Failed to fetch PR %s for %s/%s#%s: %s",
                     activity_name,
@@ -212,13 +213,15 @@ class GitHubClient:
         items: list[dict] = []
         next_url: str | None = api_url
         params: dict[str, str] | None = {"per_page": "100"}
-        while next_url:
+        while next_url and len(items) < MAX_PR_ACTIVITY_ITEMS_PER_KIND:
             response = self.client.get(next_url, params=params)
             response.raise_for_status()
             payload = response.json()
             if not isinstance(payload, list):
                 return items
             items.extend(item for item in payload if isinstance(item, dict))
+            if len(items) >= MAX_PR_ACTIVITY_ITEMS_PER_KIND:
+                return items[:MAX_PR_ACTIVITY_ITEMS_PER_KIND]
             next_url = response.links.get("next", {}).get("url")
             params = None
         return items

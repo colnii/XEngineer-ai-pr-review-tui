@@ -175,6 +175,11 @@ jobs:
         (
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
+          (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          ) &&
           contains(github.event.comment.body, '/xengineer review')
         )
       }}
@@ -194,7 +199,7 @@ jobs:
 
 The default workflow publishes one new PR conversation comment after the PR is
 opened, reopened, moved out of draft, or after someone comments `/xengineer review`
-on the PR page. Set `comment-mode: review` to publish the report as a pull request
+on the PR page as an owner, member, or collaborator. Set `comment-mode: review` to publish the report as a pull request
 review body instead; `review-action` defaults to `comment`, with `approve` and
 `request-changes` available for explicit merge-gating workflows. It does not edit
 older bot comments and does not run on every pushed commit unless that command comment is added.
