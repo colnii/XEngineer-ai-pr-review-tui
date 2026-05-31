@@ -10,32 +10,43 @@
 也不依赖实时 GitHub PR：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-xpr-review --judge-demo
+# 需要 Node.js 18+ 和 Python 3.12+。
+npx xengineer-pr-review --judge-demo
 ```
 
 TUI 会自动填入演示 PR 地址并开始分析，可直接检查产品主链路、报告结构、风险识别、
 审查建议和 Markdown 导出。
+如果是在 npm 包发布前从本仓库 checkout 里运行，用 `npx . --judge-demo`。
 
 ### 普通本地运行
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写 DEEPSEEK_API_KEY 或 OPENAI_API_KEY。
+npx xengineer-pr-review
+```
+
+npm wrapper 会在用户缓存目录里自动创建并复用内部 Python virtualenv（虚拟环境），
+然后运行现有 Python CLI。如果没有自动找到 Python 3.12+，可以设置
+`XENGINEER_PYTHON=/path/to/python`。
+
+如果是贡献者开发，仍然可以使用 Python console script（命令行入口）：
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-# 普通 PR 审查需要配置 DeepSeek 或 OpenAI key。
-export OPENAI_API_KEY="..."
 xpr-review
 ```
 
-如果你的 shell 使用 SOCKS 代理，拉取更新后请重新运行 `pip install -e ".[dev]"`，确保 `socksio` 依赖已安装。
+如果你的 shell 使用 SOCKS 代理，开发模式下拉取更新后请重新运行
+`pip install -e ".[dev]"`，确保 `socksio` 依赖已安装。
 
 ## 当前范围
 
 - 支持公开 GitHub PR，以及已配置 token 且有权限访问的私有 GitHub PR。
 - TUI 作为主要入口。
+- npm/npx wrapper 隐藏手动 virtualenv 配置，普通用户可一条命令启动。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
 - 会把 PR Conversation 评论、review 正文、行内 review comment 和 commit message 纳入审查上下文。
@@ -53,14 +64,14 @@ xpr-review
 则会写入报告文件：
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --output -
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --output review-report.md
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --output -
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --output review-report.md
 ```
 
 评委零配置 demo 也支持同样的无界面命令行路径：
 
 ```bash
-xpr-review --judge-demo --output -
+npx xengineer-pr-review --judge-demo --output -
 ```
 
 使用真实模型输出：
@@ -68,7 +79,7 @@ xpr-review --judge-demo --output -
 ```bash
 cp .env.example .env
 # 编辑 .env，填写 OPENAI_API_KEY。
-xpr-review
+npx xengineer-pr-review
 ```
 
 如需改用 DeepSeek：
@@ -76,7 +87,7 @@ xpr-review
 ```bash
 # 编辑 .env，填写 DEEPSEEK_API_KEY。
 # 可选；DEEPSEEK_MODEL 默认是 deepseek-v4-flash。
-xpr-review
+npx xengineer-pr-review
 ```
 
 真实模型模式会使用 LangGraph（用于编排 agent 循环的库）驱动审查 agent。在 LLM 审查
@@ -90,14 +101,14 @@ xpr-review
 
 ```bash
 # 编辑 .env，填写 TAVILY_API_KEY。
-xpr-review
+npx xengineer-pr-review
 ```
 
 如果 GitHub 匿名 API 请求被限流，或需要审查私有仓库 PR，可以提供 GitHub token：
 
 ```bash
 # 编辑 .env，填写 GITHUB_TOKEN；或者继续使用 gh auth login。
-xpr-review
+npx xengineer-pr-review
 ```
 
 也可以使用 `GH_TOKEN`，或先运行 `gh auth login`，让应用通过 `gh auth token` 读取本机登录态。
@@ -113,13 +124,13 @@ TUI 不会输入、显示或保存 token。
 同一个写入路径也可以从命令行触发；因为命令行没有 TUI 预览步骤，所以必须显式传入确认参数：
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
 ```
 
 如果要把同一份 Markdown 报告发布成 PR review 正文，使用 review 模式：
 
 ```bash
-xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
+npx xengineer-pr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
 ```
 
 如果还要把带代码行号证据的 AI 风险或建议发布成行内评论，在 review 模式追加
@@ -202,10 +213,10 @@ Conversation 评论模式需要保留 `issues: write` 权限；使用 review 模
 如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
 没有模型 key 时，Action 会失败且不会发布审查结果。
 
-安装 CLI 后，也可以不用手写 YAML，直接生成同样的 workflow：
+也可以不用手写 YAML，直接用 npx 生成同样的 workflow：
 
 ```bash
-xpr-review init-action --repo-path /path/to/target/repo
+npx xengineer-pr-review init-action --repo-path /path/to/target/repo
 ```
 
 如果命令就在目标仓库里执行，可以省略 `--repo-path`。如果要生成发布 PR review 正文的
@@ -227,8 +238,8 @@ https://github.com/Textualize/textual/pull/1
 也可以从命令行指定语言：
 
 ```bash
-xpr-review --language zh
-xpr-review --language en
+npx xengineer-pr-review --language zh
+npx xengineer-pr-review --language en
 ```
 
 导出的 `review-report.md` 会使用当前 TUI 语言。
@@ -249,6 +260,7 @@ xpr-review --language en
 - `langgraph`：用于编排 model -> tool -> model 的 agent 审查循环。
 - `pydantic`：结构化模型的数据校验支持。
 - 开发依赖：`pytest` 用于测试，`ruff` 用于 lint。
+- npm wrapper 运行时：Node.js 18+，没有 npm runtime dependency（运行时依赖包）。
 
 外部服务包括 GitHub REST API、可选 OpenAI/DeepSeek 模型 API、可选 Tavily web search。
 这些服务均通过本项目代码接入，不包含复制进仓库的第三方功能代码。
@@ -256,7 +268,7 @@ xpr-review --language en
 本项目原创实现包括 PR URL 解析、unified diff 解析、确定性规则分析、上下文裁剪、报告聚合与导出、
 中英文 TUI 展示、人工确认后发布 PR 评论、LangGraph review client 集成、有边界的
 `read_file`/`grep_code`/`web_search` 工具行为、GitHub 文件/目录树 adapter、安全限制、fallback warning
-以及 fake client 测试体系。第三方库提供基础设施；PR Review 产品流程和工具策略由本仓库实现。
+、npm wrapper 以及 fake client 测试体系。第三方库提供基础设施；PR Review 产品流程和工具策略由本仓库实现。
 
 ## 模型选择
 
@@ -303,7 +315,5 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 
 ## 后续方向
 
-- 发布轻量 npm wrapper，评委可用
-  `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - 基于相同 Review Core 的 Web UI。
 - 可配置的组织级审查规则。

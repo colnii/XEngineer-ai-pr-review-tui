@@ -1,0 +1,24 @@
+{
+  "name": "xengineer-pr-review",
+  "version": "0.1.0",
+  "description": "One-command npm wrapper for the XEngineer AI PR reviewer",
+  "bin": {
+    "xengineer-pr-review": "./bin/xengineer-pr-review.js"
+  },
+  "files": [
+    "bin/",
+    "src/xengineer_pr_review/**/*.py",
+    "pyproject.toml",
+    "README.md",
+    "README.zh-CN.md",
+    ".env.example"
+  ],
+  "scripts": {
+    "test": "node --test tests/npm-wrapper.test.js",
+    "test:python": "python3 -m pytest",
+    "test:all": "npm test && python3 -m pytest"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
