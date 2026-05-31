@@ -259,6 +259,25 @@ def test_fetch_pr_continues_when_one_activity_endpoint_fails(monkeypatch, caplog
     assert "Failed to fetch PR conversation comments" in caplog.text
 
 
+def test_fetch_pr_continues_when_activity_payload_is_invalid(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    caplog.set_level("WARNING")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100":
+            return httpx.Response(200, content=b"not-json")
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert pr.title == "Demo PR"
+    assert pr.activities == ()
+    assert "Failed to fetch PR reviews" in caplog.text
+
+
 def test_fetch_pr_activity_pagination_is_bounded(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
     requests: list[str] = []
