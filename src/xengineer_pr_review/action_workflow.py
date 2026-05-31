@@ -11,6 +11,7 @@ def render_action_workflow(
     action_uses: str = DEFAULT_ACTION_USES,
     comment_mode: str = "conversation",
     review_action: str = "comment",
+    inline_comments: bool = False,
     language: str = "zh",
 ) -> str:
     # GitHub expressions need doubled braces inside this f-string template.
@@ -54,6 +55,7 @@ jobs:
           github-token: ${{{{ github.token }}}}
           comment-mode: {comment_mode}
           review-action: {review_action}
+          inline-comments: {str(inline_comments).lower()}
           language: {language}
           deepseek-api-key: ${{{{ secrets.DEEPSEEK_API_KEY }}}}
           openai-api-key: ${{{{ secrets.OPENAI_API_KEY }}}}
@@ -72,6 +74,7 @@ def init_action_workflow(
     action_uses: str = DEFAULT_ACTION_USES,
     comment_mode: str = "conversation",
     review_action: str = "comment",
+    inline_comments: bool = False,
     language: str = "zh",
     overwrite: bool = False,
 ) -> Path:
@@ -89,6 +92,7 @@ def init_action_workflow(
             action_uses=action_uses,
             comment_mode=comment_mode,
             review_action=review_action,
+            inline_comments=inline_comments,
             language=language,
         ),
         encoding="utf-8",

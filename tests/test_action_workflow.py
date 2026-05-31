@@ -16,6 +16,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
         comment_mode="review",
         review_action="approve",
         language="en",
+        inline_comments=True,
     )
 
     assert "types: [opened, reopened, ready_for_review]" in workflow
@@ -25,6 +26,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     assert "github-token: ${{ github.token }}" in workflow
     assert "comment-mode: review" in workflow
     assert "review-action: approve" in workflow
+    assert "inline-comments: true" in workflow
     assert "language: en" in workflow
     assert "issues: read" in workflow
     assert "issues: write" not in workflow
@@ -58,6 +60,7 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
         action_uses="owner/xengineer@v1",
         comment_mode="review",
         review_action="request-changes",
+        inline_comments=True,
         language="zh",
     )
 
@@ -67,6 +70,7 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
     assert "uses: owner/xengineer@v1" in workflow
     assert "comment-mode: review" in workflow
     assert "review-action: request-changes" in workflow
+    assert "inline-comments: true" in workflow
     assert "language: zh" in workflow
 
 
@@ -105,6 +109,7 @@ def test_repository_installs_pr_review_workflow() -> None:
     assert "openai-api-key: ${{ secrets.OPENAI_API_KEY }}" in workflow
     assert "tavily-api-key: ${{ secrets.TAVILY_API_KEY }}" in workflow
     assert "review-action: comment" in workflow
+    assert "inline-comments: false" in workflow
     assert "language: zh" in workflow
     assert "comment-mode: conversation" in workflow
     assert "issues: write" in workflow

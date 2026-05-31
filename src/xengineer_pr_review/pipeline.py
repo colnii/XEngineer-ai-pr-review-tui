@@ -11,6 +11,7 @@ from xengineer_pr_review.llm import MockLLMClient
 from xengineer_pr_review.models import (
     ChangedFile,
     EvidenceReference,
+    InlineReviewComment,
     PullRequestData,
     PullRequestRef,
     ReviewAction,
@@ -25,6 +26,7 @@ from xengineer_pr_review.rules import analyze_rules
 
 LOGGER = logging.getLogger(__name__)
 CommentMode = Literal["conversation", "review"]
+MAX_INLINE_REVIEW_COMMENTS = 10
 
 
 class GitHubLike(Protocol):
@@ -43,6 +45,8 @@ class GitHubReviewLike(GitHubLike, Protocol):
         ref: PullRequestRef,
         body: str,
         review_action: ReviewAction = "comment",
+        comments: list[InlineReviewComment] | None = None,
+        commit_id: str = "",
     ): ...
 
 
@@ -98,6 +102,7 @@ class ReviewPipeline:
             pr_url=pr_url,
             repo=f"{ref.owner}/{ref.repo}",
             pr_number=ref.number,
+            head_sha=pr.head_sha,
             author=pr.author,
             additions=sum(file.additions for file in files),
             deletions=sum(file.deletions for file in files),
@@ -118,13 +123,32 @@ class ReviewPipeline:
         body: str,
         comment_mode: CommentMode = "conversation",
         review_action: ReviewAction = "comment",
+        include_inline_comments: bool = False,
+        report: ReviewReport | None = None,
     ):
         ref = parse_pr_url(pr_url)
         if comment_mode == "conversation":
+            if include_inline_comments:
+                raise ValueError("Inline review comments require pull request review mode.")
             return self.github.post_pr_comment(ref, body)
         if comment_mode == "review":
             if _github_supports_pr_reviews(self.github):
-                return self.github.post_pr_review(ref, body, review_action=review_action)
+                comments: list[InlineReviewComment] = []
+                commit_id = ""
+                if include_inline_comments:
+                    if report is None or not report.head_sha:
+                        raise ValueError(
+                            "Inline review comments require a review report with head SHA."
+                        )
+                    comments = build_inline_review_comments(report)
+                    commit_id = report.head_sha
+                return self.github.post_pr_review(
+                    ref,
+                    body,
+                    review_action=review_action,
+                    comments=comments,
+                    commit_id=commit_id,
+                )
             raise ValueError("GitHub client does not support pull request review comments.")
         raise ValueError(f"Unsupported PR comment mode: {comment_mode}")
 
@@ -157,6 +181,78 @@ def _github_supports_read_tools(github: GitHubLike) -> TypeGuard[GitHubReadLike]
 
 def _github_supports_pr_reviews(github: GitHubLike) -> TypeGuard[GitHubReviewLike]:
     return hasattr(github, "post_pr_review")
+
+
+def build_inline_review_comments(report: ReviewReport | None) -> list[InlineReviewComment]:
+    if report is None:
+        return []
+    comments: list[InlineReviewComment] = []
+    for finding in report.findings:
+        comments.extend(
+            _inline_comments_from_evidence(
+                finding.evidence,
+                f"XEngineer AI risk: {finding.title}\n\n{finding.explanation}",
+            )
+        )
+    for suggestion in report.suggestions:
+        comments.extend(
+            _inline_comments_from_evidence(
+                suggestion.evidence,
+                f"XEngineer AI suggestion: {suggestion.title}\n\n{suggestion.body}",
+            )
+        )
+    comments = _deduplicate_inline_comments(comments)
+    if len(comments) > MAX_INLINE_REVIEW_COMMENTS:
+        LOGGER.warning(
+            "Inline review comments truncated from %s to %s.",
+            len(comments),
+            MAX_INLINE_REVIEW_COMMENTS,
+        )
+        return comments[:MAX_INLINE_REVIEW_COMMENTS]
+    return comments
+
+
+def _inline_comments_from_evidence(
+    evidence: list[EvidenceReference],
+    comment_body: str,
+) -> list[InlineReviewComment]:
+    comments: list[InlineReviewComment] = []
+    for reference in evidence:
+        comment = _inline_comment_from_evidence(reference, comment_body)
+        if comment is not None:
+            comments.append(comment)
+    return comments
+
+
+def _inline_comment_from_evidence(
+    reference: EvidenceReference,
+    comment_body: str,
+) -> InlineReviewComment | None:
+    if reference.kind != "code" or not reference.path or reference.line_start is None:
+        return None
+    raw_end = reference.line_end or reference.line_start
+    line_start, line_end = sorted((reference.line_start, raw_end))
+    start_line = line_start if line_start != line_end else None
+    return InlineReviewComment(
+        path=reference.path,
+        body=comment_body,
+        line=line_end,
+        start_line=start_line,
+    )
+
+
+def _deduplicate_inline_comments(
+    comments: list[InlineReviewComment],
+) -> list[InlineReviewComment]:
+    deduplicated: list[InlineReviewComment] = []
+    seen: set[tuple[str, int, int | None, str]] = set()
+    for comment in comments:
+        key = (comment.path, comment.line, comment.start_line, comment.side)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduplicated.append(comment)
+    return deduplicated
 
 
 def _enrich_review_item_evidence(
@@ -226,6 +322,8 @@ def _hydrate_code_evidence_urls(
             path = file_ids.get(file_id, "")
         if not path or path not in files_by_path:
             continue
+        if not _line_range_fits_changed_file(reference, files_by_path[path]):
+            continue
         if reference.url and reference.path and reference.path not in file_ids:
             hydrated.append(_without_code_snippet(reference))
             continue
@@ -241,6 +339,22 @@ def _hydrate_code_evidence_urls(
             )
         )
     evidence[:] = hydrated
+
+
+def _line_range_fits_changed_file(
+    reference: EvidenceReference,
+    changed_file: ChangedFile,
+) -> bool:
+    if reference.line_start is None:
+        return True
+    if not changed_file.line_ranges:
+        return False
+    raw_end = reference.line_end or reference.line_start
+    line_start, line_end = sorted((reference.line_start, raw_end))
+    return any(
+        line_start >= range_start and line_end <= range_end
+        for range_start, range_end in changed_file.line_ranges
+    )
 
 
 def _normalize_item_files(

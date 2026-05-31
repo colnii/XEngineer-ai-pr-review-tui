@@ -38,6 +38,7 @@ jobs:
           github-token: ${{ github.token }}
           comment-mode: conversation
           review-action: comment
+          inline-comments: false
           language: zh
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}

@@ -6,7 +6,7 @@ import pytest
 
 import xengineer_pr_review.github as github_module
 from xengineer_pr_review.github import GitHubClient
-from xengineer_pr_review.models import PullRequestRef
+from xengineer_pr_review.models import InlineReviewComment, PullRequestRef
 
 
 PULL_API_URL = "https://api.github.com/repos/owner/repo/pulls/1"
@@ -418,6 +418,53 @@ def test_post_pr_review_can_approve(monkeypatch) -> None:
 
     assert result.html_url.endswith("#pullrequestreview-11")
     assert requests == [{"body": "# Report", "event": "APPROVE"}]
+
+
+def test_post_pr_review_can_include_inline_comments(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-13"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(
+        PullRequestRef("owner", "repo", 1),
+        "# Report",
+        comments=[
+            InlineReviewComment(
+                path="src/auth.py",
+                body="XEngineer: check token handling.",
+                line=12,
+                start_line=10,
+            )
+        ],
+        commit_id="abc123",
+    )
+
+    assert result.html_url.endswith("#pullrequestreview-13")
+    assert requests == [
+        {
+            "body": "# Report",
+            "event": "COMMENT",
+            "commit_id": "abc123",
+            "comments": [
+                {
+                    "path": "src/auth.py",
+                    "body": "XEngineer: check token handling.",
+                    "line": 12,
+                    "side": "RIGHT",
+                    "start_line": 10,
+                    "start_side": "RIGHT",
+                }
+            ],
+        }
+    ]
 
 
 def test_post_pr_review_truncates_oversized_body(monkeypatch) -> None:

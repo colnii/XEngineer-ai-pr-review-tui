@@ -5,22 +5,29 @@ from textual.widgets import Input, Static
 
 from xengineer_pr_review.credentials import CredentialStatus
 from xengineer_pr_review.llm import MockLLMClient
-from xengineer_pr_review.models import ReviewFinding, ReviewReport, ReviewSuggestion
+from xengineer_pr_review.models import PostedComment, ReviewFinding, ReviewReport, ReviewSuggestion
 from xengineer_pr_review.pipeline import ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
 
 
 class PostingPipeline:
     def __init__(self) -> None:
-        self.posts: list[tuple[str, str]] = []
+        self.posts: list[tuple[str, str, str, str, bool, ReviewReport | None]] = []
 
-    def post_review_comment(self, pr_url: str, body: str):
-        self.posts.append((pr_url, body))
-        return type(
-            "Posted",
-            (),
-            {"html_url": "https://github.com/owner/repo/pull/1#issuecomment-9"},
-        )()
+    def post_review_comment(
+        self,
+        pr_url: str,
+        body: str,
+        comment_mode: str = "conversation",
+        review_action: str = "comment",
+        include_inline_comments: bool = False,
+        report: ReviewReport | None = None,
+    ) -> PostedComment:
+        self.posts.append(
+            (pr_url, body, comment_mode, review_action, include_inline_comments, report)
+        )
+        suffix = "pullrequestreview-9" if comment_mode == "review" else "issuecomment-9"
+        return PostedComment(html_url=f"https://github.com/owner/repo/pull/1#{suffix}")
 
 
 def test_tui_defaults_to_chinese_language() -> None:
@@ -299,6 +306,24 @@ def test_tui_publish_first_click_arms_confirmation(monkeypatch) -> None:
     assert "再次点击" in statuses[-1]
 
 
+def test_tui_can_toggle_pr_review_publish_mode() -> None:
+    app = ReviewTUI(PostingPipeline())
+
+    app._toggle_comment_mode()
+
+    assert app.comment_mode == "review"
+    assert app.inline_comments_enabled is False
+
+
+def test_tui_inline_comments_switches_to_pr_review_mode() -> None:
+    app = ReviewTUI(PostingPipeline())
+
+    app._toggle_inline_comments()
+
+    assert app.comment_mode == "review"
+    assert app.inline_comments_enabled is True
+
+
 def test_tui_confirm_publish_posts_markdown(monkeypatch) -> None:
     pipeline = PostingPipeline()
     app = ReviewTUI(pipeline)
@@ -312,11 +337,50 @@ def test_tui_confirm_publish_posts_markdown(monkeypatch) -> None:
     statuses: list[str] = []
     monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
 
-    app._confirm_publish()
+    asyncio.run(app._confirm_publish())
 
-    assert pipeline.posts == [("https://github.com/owner/repo/pull/1", "# Report")]
+    assert pipeline.posts == [
+        (
+            "https://github.com/owner/repo/pull/1",
+            "# Report",
+            "conversation",
+            "comment",
+            False,
+            app.last_report,
+        )
+    ]
     assert app.publish_confirmation_pending is False
     assert "已发布评论" in statuses[-1]
+
+
+def test_tui_confirm_publish_posts_pr_review_with_inline_comments(monkeypatch) -> None:
+    pipeline = PostingPipeline()
+    app = ReviewTUI(pipeline)
+    app.comment_mode = "review"
+    app.inline_comments_enabled = True
+    app.last_report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+    )
+    app.last_markdown = "# Report"
+    app.publish_confirmation_pending = True
+    statuses: list[str] = []
+    monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
+
+    asyncio.run(app._confirm_publish())
+
+    assert pipeline.posts == [
+        (
+            "https://github.com/owner/repo/pull/1",
+            "# Report",
+            "review",
+            "comment",
+            True,
+            app.last_report,
+        )
+    ]
+    assert "已发布" in statuses[-1]
 
 
 def test_tui_confirm_publish_does_not_post_without_pending_confirmation(monkeypatch) -> None:
@@ -331,11 +395,46 @@ def test_tui_confirm_publish_does_not_post_without_pending_confirmation(monkeypa
     statuses: list[str] = []
     monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
 
-    app._confirm_publish()
+    asyncio.run(app._confirm_publish())
 
     assert pipeline.posts == []
     assert app.publish_confirmation_pending is True
     assert "再次点击" in statuses[-1]
+
+
+def test_tui_confirm_publish_uses_worker_when_app_is_running(monkeypatch) -> None:
+    pipeline = PostingPipeline()
+    app = ReviewTUI(pipeline)
+    app.last_report = ReviewReport(
+        pr_title="Improve auth",
+        pr_url="https://github.com/owner/repo/pull/1",
+        summary="Summary text",
+    )
+    app.last_markdown = "# Report"
+    app.publish_confirmation_pending = True
+    statuses: list[str] = []
+    worker_calls: list[tuple[bool, bool]] = []
+    monkeypatch.setattr(app, "_update_status", lambda text: statuses.append(text))
+    monkeypatch.setattr(type(app), "is_running", property(lambda self: True))
+
+    class FakeWorker:
+        def __init__(self, callback):
+            self.callback = callback
+
+        async def wait(self):
+            return self.callback()
+
+    def fake_run_worker(callback, *, thread: bool, exclusive: bool):
+        worker_calls.append((thread, exclusive))
+        return FakeWorker(callback)
+
+    monkeypatch.setattr(app, "run_worker", fake_run_worker)
+
+    asyncio.run(app._confirm_publish())
+
+    assert worker_calls == [(True, True)]
+    assert pipeline.posts
+    assert "已发布评论" in statuses[-1]
 
 
 @pytest.mark.anyio

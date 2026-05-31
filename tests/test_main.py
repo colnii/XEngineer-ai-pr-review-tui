@@ -96,7 +96,7 @@ class PublishingPipeline:
     def __init__(self, llm_status: str = "ok") -> None:
         self.llm_status = llm_status
         self.runs: list[str] = []
-        self.posts: list[tuple[str, str, str, str]] = []
+        self.posts: list[tuple[str, str, str, str, bool, str]] = []
 
     def run(self, pr_url: str) -> ReviewReport:
         self.runs.append(pr_url)
@@ -105,6 +105,7 @@ class PublishingPipeline:
             pr_url=pr_url,
             repo="owner/repo",
             pr_number=1,
+            head_sha="sha123",
             author="alice",
             summary="Summary text",
             changed_files=["src/auth.py"],
@@ -117,8 +118,19 @@ class PublishingPipeline:
         body: str,
         comment_mode: str = "conversation",
         review_action: str = "comment",
+        include_inline_comments: bool = False,
+        report: ReviewReport | None = None,
     ) -> PostedComment:
-        self.posts.append((pr_url, body, comment_mode, review_action))
+        self.posts.append(
+            (
+                pr_url,
+                body,
+                comment_mode,
+                review_action,
+                include_inline_comments,
+                report.head_sha if report is not None else "",
+            )
+        )
         suffix = "pullrequestreview-9" if comment_mode == "review" else "issuecomment-9"
         return PostedComment(html_url=f"https://github.com/owner/repo/pull/1#{suffix}")
 
@@ -195,6 +207,28 @@ def test_main_can_publish_pull_request_review_requesting_changes(monkeypatch) ->
 
     assert pipeline.posts[0][2] == "review"
     assert pipeline.posts[0][3] == "request-changes"
+
+
+def test_main_can_publish_pull_request_review_with_inline_comments(monkeypatch) -> None:
+    pipeline = PublishingPipeline()
+    monkeypatch.setattr(main_module, "build_pipeline", lambda **kwargs: pipeline)
+
+    main_module.main(
+        [
+            "--pr-url",
+            PR_URL,
+            "--publish-comment",
+            "--comment-mode",
+            "review",
+            "--inline-comments",
+            "--confirm-publish",
+            "--mock-llm",
+        ]
+    )
+
+    assert pipeline.posts[0][2] == "review"
+    assert pipeline.posts[0][4] is True
+    assert pipeline.posts[0][5] == "sha123"
 
 
 def test_main_publishes_comment_with_auto_publish_for_automation(monkeypatch, capsys) -> None:
@@ -436,6 +470,31 @@ def test_main_refuses_auto_publish_without_publish_comment(monkeypatch) -> None:
     assert pipeline_built is False
 
 
+def test_main_refuses_inline_comments_without_review_mode(monkeypatch) -> None:
+    pipeline_built = False
+
+    def fake_build_pipeline(**kwargs):
+        nonlocal pipeline_built
+        pipeline_built = True
+        return PublishingPipeline()
+
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main(
+            [
+                "--pr-url",
+                PR_URL,
+                "--publish-comment",
+                "--inline-comments",
+                "--confirm-publish",
+            ]
+        )
+
+    assert exc.value.code == 2
+    assert pipeline_built is False
+
+
 def test_publish_review_comment_refuses_failed_llm_report() -> None:
     pipeline = PublishingPipeline(llm_status="failed")
 
@@ -456,6 +515,7 @@ def test_main_init_action_writes_workflow(tmp_path, capsys) -> None:
             "owner/xengineer@v1",
             "--comment-mode",
             "review",
+            "--inline-comments",
             "--language",
             "en",
         ]
@@ -466,6 +526,7 @@ def test_main_init_action_writes_workflow(tmp_path, capsys) -> None:
     workflow = workflow_path.read_text(encoding="utf-8")
     assert "uses: owner/xengineer@v1" in workflow
     assert "comment-mode: review" in workflow
+    assert "inline-comments: true" in workflow
     assert f"Wrote GitHub Actions workflow: {workflow_path}" in capsys.readouterr().out
 
 

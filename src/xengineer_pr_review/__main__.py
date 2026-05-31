@@ -91,6 +91,7 @@ def publish_review_comment(
     language: str,
     comment_mode: CommentMode = "conversation",
     review_action: ReviewAction = "comment",
+    include_inline_comments: bool = False,
 ) -> str:
     report, markdown = analyze_review_report(pipeline, pr_url, language)
     if report.llm_status == "failed":
@@ -100,6 +101,8 @@ def publish_review_comment(
         markdown,
         comment_mode=comment_mode,
         review_action=review_action,
+        include_inline_comments=include_inline_comments,
+        report=report,
     )
     return posted.html_url
 
@@ -168,6 +171,14 @@ def _run_main(argv: Sequence[str]) -> None:
         help="Pull request review action when --comment-mode review is used, default: comment",
     )
     parser.add_argument(
+        "--inline-comments",
+        action="store_true",
+        help=(
+            "Attach RIGHT-side line comments to the PR review when --comment-mode review "
+            "is used"
+        ),
+    )
+    parser.add_argument(
         "--confirm-publish",
         action="store_true",
         help="Required with --publish-comment to confirm the GitHub write operation",
@@ -198,6 +209,10 @@ def _run_main(argv: Sequence[str]) -> None:
         parser.error("--review-action requires --publish-comment")
     if args.review_action != "comment" and args.comment_mode != "review":
         parser.error("--review-action approve/request-changes requires --comment-mode review")
+    if args.inline_comments and not args.publish_comment:
+        parser.error("--inline-comments requires --publish-comment")
+    if args.inline_comments and args.comment_mode != "review":
+        parser.error("--inline-comments requires --comment-mode review")
 
     if args.publish_comment:
         if not args.pr_url:
@@ -218,6 +233,7 @@ def _run_main(argv: Sequence[str]) -> None:
                 args.language,
                 comment_mode=args.comment_mode,
                 review_action=args.review_action,
+                include_inline_comments=args.inline_comments,
             )
         published_label = "Published PR review" if args.comment_mode == "review" else "Published PR comment"
         print(f"{published_label}: {url}")
@@ -312,6 +328,11 @@ def _add_init_action_subcommand(parser: argparse.ArgumentParser) -> argparse.Arg
         help="Review action used when generated workflow publishes PR reviews, default: comment",
     )
     init_action_parser.add_argument(
+        "--inline-comments",
+        action="store_true",
+        help="Generate a workflow that attaches line-level comments in PR review mode",
+    )
+    init_action_parser.add_argument(
         "--language",
         choices=("zh", "en"),
         default="zh",
@@ -326,12 +347,15 @@ def _add_init_action_subcommand(parser: argparse.ArgumentParser) -> argparse.Arg
 
 
 def _run_init_action(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.inline_comments and args.comment_mode != "review":
+        parser.error("--inline-comments requires --comment-mode review")
     try:
         workflow_path = init_action_workflow(
             repo_path=args.repo_path,
             action_uses=args.action_uses,
             comment_mode=args.comment_mode,
             review_action=args.review_action,
+            inline_comments=args.inline_comments,
             language=args.language,
             overwrite=args.overwrite,
         )

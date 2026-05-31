@@ -15,6 +15,10 @@ LABELS: dict[str, dict[Language, str]] = {
     "button.export": {"zh": "导出", "en": "Export"},
     "button.publish": {"zh": "发布评论", "en": "Publish Comment"},
     "button.confirm_publish": {"zh": "确认发布", "en": "Confirm Publish"},
+    "button.comment_mode_conversation": {"zh": "发布到对话", "en": "Conversation"},
+    "button.comment_mode_review": {"zh": "发布为 PR Review", "en": "PR Review"},
+    "button.inline_comments_off": {"zh": "行内评论：关", "en": "Inline: Off"},
+    "button.inline_comments_on": {"zh": "行内评论：开", "en": "Inline: On"},
     "button.save_deepseek": {"zh": "保存 DeepSeek", "en": "Save DeepSeek"},
     "button.save_openai": {"zh": "保存 OpenAI", "en": "Save OpenAI"},
     "input.pr_url": {
@@ -48,6 +52,26 @@ LABELS: dict[str, dict[Language, str]] = {
         "en": (
             "This will publish the current report to the PR conversation. Requires "
             "GitHub Issues: write or Pull requests: write; click again to confirm."
+        ),
+    },
+    "status.publish_confirm_review": {
+        "zh": (
+            "即将把当前报告发布为正式 PR Review。需要 GitHub Pull requests: write "
+            "权限；再次点击确认发布。"
+        ),
+        "en": (
+            "This will publish the current report as a pull request review. Requires "
+            "GitHub Pull requests: write; click again to confirm."
+        ),
+    },
+    "status.publish_confirm_review_inline": {
+        "zh": (
+            "即将发布正式 PR Review，并把有行号证据的 AI 发现挂到代码行上。"
+            "需要 GitHub Pull requests: write 权限；再次点击确认发布。"
+        ),
+        "en": (
+            "This will publish a pull request review and attach line comments for AI "
+            "items with line evidence. Requires GitHub Pull requests: write; click again."
         ),
     },
     "status.publishing": {"zh": "正在发布 PR 评论...", "en": "Publishing PR comment..."},

@@ -118,9 +118,11 @@ or `Contents: read` on the target repository. The TUI does not enter, display, o
 store tokens.
 
 To publish the generated report as a top-level PR conversation comment, configure
-a token and use the TUI `Publish Comment` button after analysis. The first click
-asks for confirmation; the second click posts the comment. Fine-grained tokens need
-`Issues: write` on the target repository.
+a token and use the TUI `Publish Comment` button after analysis. The TUI publish
+target can also be switched to `PR Review`, and `Inline: On` attaches eligible
+AI findings to code lines. The first click asks for confirmation; the second
+click posts the comment. Fine-grained tokens need `Issues: write` for
+conversation comments or `Pull requests: write` for PR reviews.
 
 The same write path is available from the command line, but it requires an
 explicit confirmation flag because there is no TUI preview step:
@@ -134,6 +136,16 @@ review mode:
 
 ```bash
 xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
+```
+
+To also attach line-level comments for AI findings or suggestions that have code
+evidence with line numbers, add `--inline-comments` in review mode. Automatic
+inline comments target the RIGHT side of the GitHub diff: added, modified, or
+context lines with code evidence. Deleted-line LEFT-side mapping is not inferred
+yet.
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --inline-comments --confirm-publish
 ```
 
 Review mode defaults to a non-blocking `COMMENT` review. To intentionally submit
@@ -191,6 +203,7 @@ jobs:
           github-token: ${{ github.token }}
           comment-mode: conversation
           review-action: comment
+          inline-comments: false
           language: en
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -201,8 +214,10 @@ The default workflow publishes one new PR conversation comment after the PR is
 opened, reopened, moved out of draft, or after someone comments `/xengineer review`
 on the PR page as an owner, member, or collaborator. Set `comment-mode: review` to publish the report as a pull request
 review body instead; `review-action` defaults to `comment`, with `approve` and
-`request-changes` available for explicit merge-gating workflows. It does not edit
-older bot comments and does not run on every pushed commit unless that command comment is added.
+`request-changes` available for explicit merge-gating workflows. Set
+`inline-comments: true` together with `comment-mode: review` to attach eligible
+AI findings to code lines. It does not edit older bot comments and does not run
+on every pushed commit unless that command comment is added.
 Keep `issues: write` for conversation comments. When using review mode, keep
 `issues: read` for PR conversation history and `pull-requests: write` for the
 review body. Configure `DEEPSEEK_API_KEY` or
@@ -219,8 +234,9 @@ xpr-review init-action --repo-path /path/to/target/repo --language en
 If you run the command inside the target repository, omit `--repo-path`. Use
 `--comment-mode review` to generate a workflow that publishes pull request review
 body comments, `--review-action comment|approve|request-changes` to choose the
-review state, `--action-uses owner/repo@ref` to point at a fork, branch, or
-release tag, and `--overwrite` only when replacing an existing generated workflow.
+review state, `--inline-comments` to enable line-level AI review comments,
+`--action-uses owner/repo@ref` to point at a fork, branch, or release tag, and
+`--overwrite` only when replacing an existing generated workflow.
 
 Paste a PR URL such as:
 
@@ -298,7 +314,9 @@ When a real model is configured, the LangGraph agent can request extra context w
   workflow publishes a new comment per trigger and does not edit an older XEngineer comment.
 - Pull request review body comments are supported with `--comment-mode review`.
   `--review-action approve` and `--review-action request-changes` are available
-  for explicit review-gating workflows, but inline review comments are not implemented.
+  for explicit review-gating workflows. Inline review comments are optional,
+  target RIGHT-side diff lines, and are only generated for review items that
+  include code evidence with line numbers.
 - Published GitHub comment bodies are capped before sending to avoid GitHub API
   validation failures on oversized reports.
 - No repository-wide semantic indexing.
@@ -309,5 +327,4 @@ When a real model is configured, the LangGraph agent can request extra context w
 - One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
   backed by a small Node wrapper around the packaged Python app.
 - Web UI using the same review core.
-- Optional inline review comments after GitHub inline-position mapping is implemented.
 - Configurable organization-specific review rules.

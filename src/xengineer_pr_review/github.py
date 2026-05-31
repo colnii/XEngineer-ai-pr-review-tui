@@ -12,6 +12,7 @@ import httpx
 
 from xengineer_pr_review.diff_parser import parse_unified_diff
 from xengineer_pr_review.models import (
+    InlineReviewComment,
     PostedComment,
     PullRequestActivity,
     PullRequestData,
@@ -97,14 +98,21 @@ class GitHubClient:
         ref: PullRequestRef,
         body: str,
         review_action: ReviewAction = "comment",
+        comments: list[InlineReviewComment] | None = None,
+        commit_id: str = "",
     ) -> PostedComment:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}/reviews"
+        payload = {
+            "body": _bounded_comment_body(body),
+            "event": _review_action_event(review_action),
+        }
+        if commit_id:
+            payload["commit_id"] = commit_id
+        if comments:
+            payload["comments"] = [_inline_review_comment_payload(comment) for comment in comments]
         response = self.client.post(
             api_url,
-            json={
-                "body": _bounded_comment_body(body),
-                "event": _review_action_event(review_action),
-            },
+            json=payload,
         )
         response.raise_for_status()
         payload = response.json()
@@ -280,6 +288,19 @@ def _bounded_comment_body(body: str) -> str:
         return body
     keep_chars = MAX_COMMENT_BODY_CHARS - len(COMMENT_TRUNCATION_NOTICE)
     return body[:keep_chars].rstrip() + COMMENT_TRUNCATION_NOTICE
+
+
+def _inline_review_comment_payload(comment: InlineReviewComment) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "path": comment.path,
+        "body": comment.body,
+        "line": comment.line,
+        "side": comment.side,
+    }
+    if comment.start_line is not None:
+        payload["start_line"] = comment.start_line
+        payload["start_side"] = comment.start_side or comment.side
+    return payload
 
 
 def _review_action_event(review_action: ReviewAction) -> str:
