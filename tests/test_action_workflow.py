@@ -88,3 +88,17 @@ def test_init_action_workflow_can_overwrite_existing_file(tmp_path: Path) -> Non
 
     assert written_path == workflow_path
     assert DEFAULT_ACTION_USES in workflow_path.read_text(encoding="utf-8")
+
+
+def test_repository_installs_pr_review_workflow() -> None:
+    workflow_path = WORKFLOW_RELATIVE_PATH
+
+    workflow = workflow_path.read_text(encoding="utf-8")
+
+    assert "pull_request:" in workflow
+    assert "issue_comment:" in workflow
+    assert f"uses: {DEFAULT_ACTION_USES}" in workflow
+    assert "github-token: ${{ github.token }}" in workflow
+    assert "deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}" in workflow
+    assert "openai-api-key: ${{ secrets.OPENAI_API_KEY }}" in workflow
+    assert "comment-mode: conversation" in workflow
