@@ -307,6 +307,6 @@ def _review_action_event(review_action: ReviewAction) -> str:
     events = {
         "comment": "COMMENT",
         "approve": "APPROVE",
-        "request-changes": "REQUEST_CHANGES",
+        "request-changes": "COMMENT",
     }
     return events[review_action]
