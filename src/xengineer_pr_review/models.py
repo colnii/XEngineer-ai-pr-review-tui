@@ -12,6 +12,7 @@ SuggestionType = Literal["comment", "test", "maintainability", "edge-case"]
 Confidence = Literal["high", "medium", "low"]
 EvidenceKind = Literal["code", "web"]
 PullRequestActivityKind = Literal["commit", "conversation", "review", "inline"]
+ReviewAction = Literal["comment", "approve", "request-changes"]
 
 
 @dataclass(frozen=True)

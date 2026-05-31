@@ -124,6 +124,10 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
 ```
 
+review 模式默认提交不阻塞合并的 `COMMENT` review。如果确认要提交批准或阻塞式修改请求，
+再显式追加 `--review-action approve` 或 `--review-action request-changes`。这两个动作可能影响
+启用了 review 门禁的仓库是否可合并，所以默认保持 comment。
+
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
 在 CI 等非交互式自动化环境里，可以用 `--auto-publish` 代替 `--confirm-publish`，
 让“自动发布”的意图更清楚。
@@ -165,6 +169,7 @@ jobs:
           pr-url: ${{ github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number) }}
           github-token: ${{ github.token }}
           comment-mode: conversation
+          review-action: comment
           language: zh
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -173,7 +178,8 @@ jobs:
 
 默认 workflow 会在 PR 创建、重新打开、从 draft 变成 ready for review，或有人在 PR 页面评论
 `/xengineer review` 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
-`comment-mode: review`。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次
+`comment-mode: review`。`review-action` 默认是 `comment`，也可以显式设为 `approve` 或
+`request-changes`，用于需要进入合并门禁的 workflow。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次
 发送这个命令评论。
 如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
 没有模型 key 时，CLI 会按现有规则回退到确定性的 mock 输出。
@@ -185,7 +191,8 @@ xpr-review init-action --repo-path /path/to/target/repo
 ```
 
 如果命令就在目标仓库里执行，可以省略 `--repo-path`。如果要生成发布 PR review 正文的
-workflow，使用 `--comment-mode review`。如果要指向 fork、分支或发布版本，用
+workflow，使用 `--comment-mode review`；如果要选择 review 状态，使用
+`--review-action comment|approve|request-changes`。如果要指向 fork、分支或发布版本，用
 `--action-uses owner/repo@ref`；只有确认要替换已有文件时才加 `--overwrite`。
 
 ### 真实 AI 审核验收测试
@@ -281,8 +288,9 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 - 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。
 - GitHub Action 默认发布顶层 PR Conversation 评论。默认生成的 workflow 每次触发都会发一条新评论，
   不会编辑旧的 XEngineer 评论。
-- 已支持 `--comment-mode review` 发布 PR review 正文；暂不支持行内 review comment，
-  也不支持 approve/request-changes review 状态。
+- 已支持 `--comment-mode review` 发布 PR review 正文；也支持显式使用
+  `--review-action approve` 或 `--review-action request-changes` 进入 review 门禁流程。
+  暂不支持行内 review comment。
 - 没有仓库级语义索引。
 - 工具调用有轮数和输出限制；如果模型触达限制或工具失败，报告会显示 warning。
 

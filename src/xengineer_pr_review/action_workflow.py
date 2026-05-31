@@ -10,6 +10,7 @@ WORKFLOW_RELATIVE_PATH = Path(".github/workflows/xengineer-pr-review.yml")
 def render_action_workflow(
     action_uses: str = DEFAULT_ACTION_USES,
     comment_mode: str = "conversation",
+    review_action: str = "comment",
     language: str = "zh",
 ) -> str:
     # GitHub expressions need doubled braces inside this f-string template.
@@ -44,6 +45,7 @@ jobs:
           pr-url: ${{{{ github.event.pull_request.html_url || format('https://github.com/{{0}}/pull/{{1}}', github.repository, github.event.issue.number) }}}}
           github-token: ${{{{ github.token }}}}
           comment-mode: {comment_mode}
+          review-action: {review_action}
           language: {language}
           deepseek-api-key: ${{{{ secrets.DEEPSEEK_API_KEY }}}}
           openai-api-key: ${{{{ secrets.OPENAI_API_KEY }}}}
@@ -55,6 +57,7 @@ def init_action_workflow(
     repo_path: str | Path = ".",
     action_uses: str = DEFAULT_ACTION_USES,
     comment_mode: str = "conversation",
+    review_action: str = "comment",
     language: str = "zh",
     overwrite: bool = False,
 ) -> Path:
@@ -71,6 +74,7 @@ def init_action_workflow(
         render_action_workflow(
             action_uses=action_uses,
             comment_mode=comment_mode,
+            review_action=review_action,
             language=language,
         ),
         encoding="utf-8",

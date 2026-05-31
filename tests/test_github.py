@@ -302,6 +302,29 @@ def test_post_pr_review_posts_markdown_to_pull_reviews(monkeypatch) -> None:
     ]
 
 
+def test_post_pr_review_can_request_changes(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-10"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(
+        PullRequestRef("owner", "repo", 1),
+        "# Report",
+        review_action="request-changes",
+    )
+
+    assert result.html_url.endswith("#pullrequestreview-10")
+    assert requests == [{"body": "# Report", "event": "REQUEST_CHANGES"}]
+
+
 def test_fetch_file_text_reads_content_at_requested_ref(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "read-token")
     seen_requests: list[tuple[str, str | None]] = []

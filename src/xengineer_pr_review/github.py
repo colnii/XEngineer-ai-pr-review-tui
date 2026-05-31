@@ -15,6 +15,7 @@ from xengineer_pr_review.models import (
     PullRequestActivity,
     PullRequestData,
     PullRequestRef,
+    ReviewAction,
 )
 
 
@@ -72,9 +73,17 @@ class GitHubClient:
         payload = response.json()
         return PostedComment(html_url=payload.get("html_url", ""))
 
-    def post_pr_review(self, ref: PullRequestRef, body: str) -> PostedComment:
+    def post_pr_review(
+        self,
+        ref: PullRequestRef,
+        body: str,
+        review_action: ReviewAction = "comment",
+    ) -> PostedComment:
         api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/pulls/{ref.number}/reviews"
-        response = self.client.post(api_url, json={"body": body, "event": "COMMENT"})
+        response = self.client.post(
+            api_url,
+            json={"body": body, "event": _review_action_event(review_action)},
+        )
         response.raise_for_status()
         payload = response.json()
         return PostedComment(html_url=payload.get("html_url", ""))
@@ -240,3 +249,12 @@ def _user_login(payload: dict) -> str:
 
 def _clean_body(value: object) -> str:
     return str(value or "").strip()
+
+
+def _review_action_event(review_action: ReviewAction) -> str:
+    events = {
+        "comment": "COMMENT",
+        "approve": "APPROVE",
+        "request-changes": "REQUEST_CHANGES",
+    }
+    return events[review_action]

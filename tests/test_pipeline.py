@@ -390,14 +390,19 @@ def test_pipeline_logs_when_tool_aware_llm_cannot_receive_tools(caplog) -> None:
 class PostingGitHubClient(FakeGitHubClient):
     def __init__(self) -> None:
         self.posts: list[tuple[PullRequestRef, str]] = []
-        self.reviews: list[tuple[PullRequestRef, str]] = []
+        self.reviews: list[tuple[PullRequestRef, str, str]] = []
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
         self.posts.append((ref, body))
         return PostedComment(html_url="https://github.com/owner/repo/pull/1#issuecomment-9")
 
-    def post_pr_review(self, ref: PullRequestRef, body: str) -> PostedComment:
-        self.reviews.append((ref, body))
+    def post_pr_review(
+        self,
+        ref: PullRequestRef,
+        body: str,
+        review_action: str = "comment",
+    ) -> PostedComment:
+        self.reviews.append((ref, body, review_action))
         return PostedComment(html_url="https://github.com/owner/repo/pull/1#pullrequestreview-9")
 
 
@@ -423,7 +428,21 @@ def test_pipeline_posts_pull_request_review_from_pr_url() -> None:
 
     assert result.html_url.endswith("#pullrequestreview-9")
     assert github.posts == []
-    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report")]
+    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "comment")]
+
+
+def test_pipeline_passes_review_action_to_pull_request_review() -> None:
+    github = PostingGitHubClient()
+    pipeline = ReviewPipeline(github=github, llm=MockLLMClient())
+
+    pipeline.post_review_comment(
+        "https://github.com/owner/repo/pull/1",
+        "# Report",
+        comment_mode="review",
+        review_action="approve",
+    )
+
+    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "approve")]
 
 
 def test_pipeline_reports_when_client_cannot_publish_pull_request_reviews() -> None:

@@ -18,6 +18,10 @@ inputs:
     description: Comment target, either conversation or review.
     required: false
     default: conversation
+  review-action:
+    description: Review action when comment-mode is review; one of comment, approve, or request-changes.
+    required: false
+    default: comment
   language:
     description: Report language, either zh or en.
     required: false
@@ -86,6 +90,7 @@ runs:
           --pr-url "${PR_URL}"
           --publish-comment
           --comment-mode "${{ inputs.comment-mode }}"
+          --review-action "${{ inputs.review-action }}"
           --auto-publish
           --language "${{ inputs.language }}"
         )

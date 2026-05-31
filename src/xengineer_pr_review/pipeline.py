@@ -13,6 +13,7 @@ from xengineer_pr_review.models import (
     EvidenceReference,
     PullRequestData,
     PullRequestRef,
+    ReviewAction,
     ReviewFinding,
     ReviewReport,
     ReviewSuggestion,
@@ -37,7 +38,12 @@ class GitHubReadLike(GitHubLike, Protocol):
 
 
 class GitHubReviewLike(GitHubLike, Protocol):
-    def post_pr_review(self, ref: PullRequestRef, body: str): ...
+    def post_pr_review(
+        self,
+        ref: PullRequestRef,
+        body: str,
+        review_action: ReviewAction = "comment",
+    ): ...
 
 
 class LLMLike(Protocol):
@@ -111,13 +117,14 @@ class ReviewPipeline:
         pr_url: str,
         body: str,
         comment_mode: CommentMode = "conversation",
+        review_action: ReviewAction = "comment",
     ):
         ref = parse_pr_url(pr_url)
         if comment_mode == "conversation":
             return self.github.post_pr_comment(ref, body)
-        if comment_mode == "review" and _github_supports_pr_reviews(self.github):
-            return self.github.post_pr_review(ref, body)
         if comment_mode == "review":
+            if _github_supports_pr_reviews(self.github):
+                return self.github.post_pr_review(ref, body, review_action=review_action)
             raise ValueError("GitHub client does not support pull request review comments.")
         raise ValueError(f"Unsupported PR comment mode: {comment_mode}")
 

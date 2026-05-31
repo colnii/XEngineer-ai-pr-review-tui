@@ -85,7 +85,7 @@ class PublishingPipeline:
     def __init__(self, llm_status: str = "ok") -> None:
         self.llm_status = llm_status
         self.runs: list[str] = []
-        self.posts: list[tuple[str, str, str]] = []
+        self.posts: list[tuple[str, str, str, str]] = []
 
     def run(self, pr_url: str) -> ReviewReport:
         self.runs.append(pr_url)
@@ -105,8 +105,9 @@ class PublishingPipeline:
         pr_url: str,
         body: str,
         comment_mode: str = "conversation",
+        review_action: str = "comment",
     ) -> PostedComment:
-        self.posts.append((pr_url, body, comment_mode))
+        self.posts.append((pr_url, body, comment_mode, review_action))
         suffix = "pullrequestreview-9" if comment_mode == "review" else "issuecomment-9"
         return PostedComment(html_url=f"https://github.com/owner/repo/pull/1#{suffix}")
 
@@ -130,6 +131,7 @@ def test_main_publishes_comment_only_with_explicit_confirmation(monkeypatch, cap
     assert pipeline.posts[0][0] == PR_URL
     assert pipeline.posts[0][1].startswith("# AI PR 审查报告")
     assert pipeline.posts[0][2] == "conversation"
+    assert pipeline.posts[0][3] == "comment"
     assert "Summary text" in pipeline.posts[0][1]
     assert "Published PR comment:" in capsys.readouterr().out
 
@@ -154,9 +156,31 @@ def test_main_publishes_pull_request_review_when_requested(monkeypatch, capsys) 
     assert len(pipeline.posts) == 1
     assert pipeline.posts[0][0] == PR_URL
     assert pipeline.posts[0][2] == "review"
+    assert pipeline.posts[0][3] == "comment"
     output = capsys.readouterr().out
     assert "Published PR review:" in output
     assert "Published PR comment:" not in output
+
+
+def test_main_can_publish_pull_request_review_requesting_changes(monkeypatch) -> None:
+    pipeline = PublishingPipeline()
+    monkeypatch.setattr(main_module, "build_pipeline", lambda **kwargs: pipeline)
+
+    main_module.main(
+        [
+            "--pr-url",
+            PR_URL,
+            "--publish-comment",
+            "--comment-mode",
+            "review",
+            "--review-action",
+            "request-changes",
+            "--confirm-publish",
+        ]
+    )
+
+    assert pipeline.posts[0][2] == "review"
+    assert pipeline.posts[0][3] == "request-changes"
 
 
 def test_main_publishes_comment_with_auto_publish_for_automation(monkeypatch, capsys) -> None:

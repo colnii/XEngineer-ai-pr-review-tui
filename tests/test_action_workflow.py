@@ -14,6 +14,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     workflow = render_action_workflow(
         action_uses="owner/xengineer@v1",
         comment_mode="review",
+        review_action="approve",
         language="en",
     )
 
@@ -22,6 +23,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     assert "uses: owner/xengineer@v1" in workflow
     assert "github-token: ${{ github.token }}" in workflow
     assert "comment-mode: review" in workflow
+    assert "review-action: approve" in workflow
     assert "language: en" in workflow
     assert "issues: write" not in workflow
     assert "pull-requests: write" in workflow
@@ -47,6 +49,7 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
         repo_path=tmp_path,
         action_uses="owner/xengineer@v1",
         comment_mode="review",
+        review_action="request-changes",
         language="zh",
     )
 
@@ -55,6 +58,7 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
     workflow = written_path.read_text(encoding="utf-8")
     assert "uses: owner/xengineer@v1" in workflow
     assert "comment-mode: review" in workflow
+    assert "review-action: request-changes" in workflow
     assert "language: zh" in workflow
 
 

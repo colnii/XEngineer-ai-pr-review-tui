@@ -21,7 +21,7 @@ from xengineer_pr_review.llm import (
     MockLLMClient,
 )
 from xengineer_pr_review.locale import normalize_language
-from xengineer_pr_review.models import ReviewReport
+from xengineer_pr_review.models import ReviewAction, ReviewReport
 from xengineer_pr_review.pipeline import CommentMode, ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
 
@@ -75,11 +75,17 @@ def publish_review_comment(
     pr_url: str,
     language: str,
     comment_mode: CommentMode = "conversation",
+    review_action: ReviewAction = "comment",
 ) -> str:
     report, markdown = analyze_review_report(pipeline, pr_url, language)
     if report.llm_status == "failed":
         raise RuntimeError("LLM analysis failed; PR comment was not published.")
-    posted = pipeline.post_review_comment(pr_url, markdown, comment_mode=comment_mode)
+    posted = pipeline.post_review_comment(
+        pr_url,
+        markdown,
+        comment_mode=comment_mode,
+        review_action=review_action,
+    )
     return posted.html_url
 
 
@@ -130,6 +136,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Comment publish target, default: conversation",
     )
     parser.add_argument(
+        "--review-action",
+        choices=("comment", "approve", "request-changes"),
+        default="comment",
+        help="Pull request review action when --comment-mode review is used, default: comment",
+    )
+    parser.add_argument(
         "--confirm-publish",
         action="store_true",
         help="Required with --publish-comment to confirm the GitHub write operation",
@@ -156,6 +168,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         parser.error("--output must not be empty")
     if args.auto_publish and not args.publish_comment:
         parser.error("--auto-publish requires --publish-comment")
+    if args.review_action != "comment" and not args.publish_comment:
+        parser.error("--review-action requires --publish-comment")
+    if args.review_action != "comment" and args.comment_mode != "review":
+        parser.error("--review-action approve/request-changes requires --comment-mode review")
 
     if args.publish_comment:
         if not args.pr_url:
@@ -173,6 +189,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             args.pr_url,
             args.language,
             comment_mode=args.comment_mode,
+            review_action=args.review_action,
         )
         published_label = "Published PR review" if args.comment_mode == "review" else "Published PR comment"
         print(f"{published_label}: {url}")
@@ -230,6 +247,12 @@ def _add_init_action_subcommand(parser: argparse.ArgumentParser) -> argparse.Arg
         help="Comment target used in the generated workflow, default: conversation",
     )
     init_action_parser.add_argument(
+        "--review-action",
+        choices=("comment", "approve", "request-changes"),
+        default="comment",
+        help="Review action used when generated workflow publishes PR reviews, default: comment",
+    )
+    init_action_parser.add_argument(
         "--language",
         choices=("zh", "en"),
         default="zh",
@@ -249,6 +272,7 @@ def _run_init_action(args: argparse.Namespace, parser: argparse.ArgumentParser) 
             repo_path=args.repo_path,
             action_uses=args.action_uses,
             comment_mode=args.comment_mode,
+            review_action=args.review_action,
             language=args.language,
             overwrite=args.overwrite,
         )
