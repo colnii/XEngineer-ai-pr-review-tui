@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Literal, Protocol, TypeGuard
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from xengineer_pr_review.context import build_llm_context
 from xengineer_pr_review.diff_parser import parse_unified_diff
@@ -27,6 +28,8 @@ from xengineer_pr_review.rules import analyze_rules
 LOGGER = logging.getLogger(__name__)
 CommentMode = Literal["conversation", "review"]
 MAX_INLINE_REVIEW_COMMENTS = 10
+MAX_EXTERNAL_FACT_SEARCHES = 3
+EXTERNAL_URL_PATTERN = re.compile(r"https?://[^\s\"'<>),]+")
 
 
 class GitHubLike(Protocol):
@@ -171,6 +174,7 @@ class ReviewPipeline:
             file_ids=file_ids,
             activities=pr.activities,
         )
+        prompt = _with_external_fact_search_context(prompt, pr, toolbox)
         result = self.llm.analyze(prompt, toolbox=toolbox)
         _hydrate_web_evidence(result.risks, result.suggestions, toolbox.web_sources)
         return result
@@ -182,6 +186,80 @@ def _github_supports_read_tools(github: GitHubLike) -> TypeGuard[GitHubReadLike]
 
 def _github_supports_pr_reviews(github: GitHubLike) -> TypeGuard[GitHubReviewLike]:
     return hasattr(github, "post_pr_review")
+
+
+def _with_external_fact_search_context(
+    prompt: str,
+    pr: PullRequestData,
+    toolbox: ReviewToolbox,
+) -> str:
+    if getattr(toolbox, "web_searcher", None) is None:
+        return prompt
+    search_outputs: list[str] = []
+    changed_urls: list[str] = []
+    fact_findings: list[str] = []
+    for changed_url, query in _external_fact_search_queries(pr):
+        result = toolbox.web_search(query, max_results=3)
+        if result.startswith(("web_search error", "web_search unavailable")):
+            continue
+        changed_urls.append(changed_url)
+        if changed_url not in result:
+            fact_findings.append(
+                "External fact-check finding: no web result explicitly documents "
+                f"{changed_url}; flag this changed endpoint as unverified."
+            )
+        search_outputs.append(result)
+    if not search_outputs:
+        return prompt
+    changed_url_lines = [
+        f"Changed external URL under review: {changed_url}"
+        for changed_url in changed_urls
+    ]
+    return "\n\n".join(
+        [
+            prompt,
+            "External fact-check context:",
+            *changed_url_lines,
+            *fact_findings,
+            *search_outputs,
+            (
+                "Use these W1/W2 web citation ids when the final review discusses "
+                "external endpoint, version, advisory, or public-documentation facts."
+            ),
+            (
+                "Only treat the changed URL as verified when a web result explicitly "
+                "documents it; otherwise flag the changed endpoint as unverified."
+            ),
+        ]
+    )
+
+
+def _external_fact_search_queries(pr: PullRequestData) -> list[tuple[str, str]]:
+    queries: list[tuple[str, str]] = []
+    for file in pr.files:
+        for hunk in file.hunks:
+            for line in hunk.splitlines():
+                if not line.startswith("+") or line.startswith("+++"):
+                    continue
+                for url in EXTERNAL_URL_PATTERN.findall(line):
+                    query = _official_docs_query_for_url(url)
+                    if query and (url, query) not in queries:
+                        queries.append((url, query))
+                    if len(queries) >= MAX_EXTERNAL_FACT_SEARCHES:
+                        return queries
+    return queries
+
+
+def _official_docs_query_for_url(url: str) -> str:
+    parsed = urlparse(url.rstrip(".,;"))
+    if not parsed.netloc:
+        return ""
+    path_terms = " ".join(part for part in parsed.path.split("/") if part)
+    query_parts = [parsed.netloc]
+    if path_terms:
+        query_parts.append(path_terms)
+    query_parts.append("official docs API endpoint")
+    return " ".join(query_parts)
 
 
 def build_inline_review_comments(report: ReviewReport | None) -> list[InlineReviewComment]:

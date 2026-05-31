@@ -20,6 +20,7 @@ MAX_GREP_RESULTS = 20
 MAX_CACHED_FILES = 40
 DEFAULT_PR_ACTIVITY_TOOL_ITEMS = 200
 MAX_PR_ACTIVITY_TOOL_ITEMS = 300
+MAX_WEB_SNIPPET_CHARS = 600
 
 
 class GitHubReadLike(Protocol):
@@ -217,7 +218,7 @@ class ReviewToolbox:
             citation_id = f"W{index}"
             title = result.get("title") or "Untitled result"
             url = result.get("url") or ""
-            content = " ".join((result.get("content") or "").split())
+            content = _clean_web_snippet(result.get("content") or "")
             self.web_sources.append(
                 EvidenceReference(
                     kind="web",
@@ -345,3 +346,10 @@ def _bounded_int(value: int, default: int, minimum: int, maximum: int) -> int:
 def _skipped_files_message(count: int) -> str:
     noun = "file" if count == 1 else "files"
     return f"[skipped {count} unreadable {noun}]"
+
+
+def _clean_web_snippet(value: str) -> str:
+    cleaned = " ".join(value.split())
+    if len(cleaned) <= MAX_WEB_SNIPPET_CHARS:
+        return cleaned
+    return cleaned[:MAX_WEB_SNIPPET_CHARS].rstrip() + " [truncated]"

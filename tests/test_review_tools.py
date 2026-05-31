@@ -371,6 +371,21 @@ def test_web_search_formats_configured_results() -> None:
     assert web_search.calls == [("python security advisory", 1)]
 
 
+def test_web_search_truncates_long_result_snippets() -> None:
+    toolbox = ReviewToolbox(
+        github=FakeGitHub(files={}, tree_paths=[]),
+        ref=PullRequestRef("owner", "repo", 1),
+        git_ref="abc123",
+        web_searcher=LongWebSearch(),
+    )
+
+    result = toolbox.web_search("tavily endpoint", max_results=1)
+
+    assert "aaaa" in result
+    assert "[truncated]" in result
+    assert len(toolbox.web_sources[0].snippet) < 700
+
+
 def test_web_search_treats_boolean_max_results_as_default() -> None:
     web_search = FakeWebSearch()
     toolbox = ReviewToolbox(
@@ -436,6 +451,17 @@ class FakeWebSearch:
                 "title": "Example result",
                 "url": "https://example.test/result",
                 "content": "A short result snippet.",
+            }
+        ]
+
+
+class LongWebSearch:
+    def search(self, query: str, max_results: int) -> list[dict[str, str]]:
+        return [
+            {
+                "title": "Long result",
+                "url": "https" + "://example.test/long",
+                "content": "a" * 2000,
             }
         ]
 
