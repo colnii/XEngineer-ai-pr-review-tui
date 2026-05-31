@@ -126,11 +126,9 @@ def write_review_output(markdown: str, output: str) -> None:
 def _build_pipeline_or_error(parser: argparse.ArgumentParser, **kwargs) -> ReviewPipeline:
     try:
         return build_pipeline(**kwargs)
-    except MissingModelConfigurationError as exc:
+    except MissingModelConfigurationError:
         language = kwargs.get("language", "zh")
-        if str(exc) == MODEL_CONFIG_ERROR:
-            parser.error(format_missing_required_credentials_message(language))
-        parser.error(str(exc))
+        parser.error(format_missing_required_credentials_message(language))
 
 
 def main(argv: Sequence[str] | None = None) -> None:

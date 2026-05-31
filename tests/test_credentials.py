@@ -89,6 +89,33 @@ def test_save_runtime_credentials_updates_existing_dotenv(tmp_path, monkeypatch)
     ]
 
 
+def test_save_runtime_credentials_preserves_export_and_quote_style(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "\n".join(
+            [
+                'export DEEPSEEK_API_KEY="old-key"',
+                "OPENAI_API_KEY='old-openai-key'",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    save_runtime_credentials(
+        {
+            "DEEPSEEK_API_KEY": "new-key",
+            "OPENAI_API_KEY": "new-openai-key",
+        }
+    )
+
+    assert env_path.read_text(encoding="utf-8").splitlines() == [
+        'export DEEPSEEK_API_KEY="new-key"',
+        "OPENAI_API_KEY='new-openai-key'",
+    ]
+
+
 def test_save_runtime_credentials_rejects_multiline_values(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 

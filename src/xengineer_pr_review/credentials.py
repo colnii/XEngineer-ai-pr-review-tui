@@ -119,9 +119,10 @@ def _updated_dotenv_lines(existing_lines: list[str], values: Mapping[str, str]) 
     remaining = dict(values)
     updated_lines: list[str] = []
     for line in existing_lines:
-        key = _dotenv_line_key(line)
-        if key in remaining:
-            updated_lines.append(f"{key}={remaining.pop(key)}")
+        parsed_line = _parse_dotenv_assignment(line)
+        if parsed_line is not None and parsed_line[0] in remaining:
+            key, prefix, quote = parsed_line
+            updated_lines.append(f"{prefix}{key}={_format_dotenv_value(remaining.pop(key), quote)}")
         else:
             updated_lines.append(line)
     for key, value in remaining.items():
@@ -129,13 +130,26 @@ def _updated_dotenv_lines(existing_lines: list[str], values: Mapping[str, str]) 
     return updated_lines
 
 
-def _dotenv_line_key(line: str) -> str | None:
+def _parse_dotenv_assignment(line: str) -> tuple[str, str, str | None] | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
+    prefix = ""
     if stripped.startswith("export "):
+        prefix = "export "
         stripped = stripped.removeprefix("export ").lstrip()
     if "=" not in stripped:
         return None
-    key = stripped.split("=", 1)[0].strip()
-    return key if key in WRITABLE_CREDENTIAL_KEYS else None
+    key, raw_value = stripped.split("=", 1)
+    key = key.strip()
+    if key not in WRITABLE_CREDENTIAL_KEYS:
+        return None
+    value = raw_value.strip()
+    quote = value[0] if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"') else None
+    return key, prefix, quote
+
+
+def _format_dotenv_value(value: str, quote: str | None) -> str:
+    if quote is not None and quote not in value:
+        return f"{quote}{value}{quote}"
+    return value
