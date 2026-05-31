@@ -1,5 +1,10 @@
 from xengineer_pr_review.context import build_llm_context
-from xengineer_pr_review.models import ChangedFile, PullRequestData, PullRequestRef
+from xengineer_pr_review.models import (
+    ChangedFile,
+    PullRequestActivity,
+    PullRequestData,
+    PullRequestRef,
+)
 
 
 def test_context_includes_all_meaningful_files_without_file_count_limit() -> None:
@@ -55,3 +60,46 @@ def test_context_omits_low_signal_files() -> None:
         "dist/app.min.js",
         "assets/logo.png",
     ]
+
+
+def test_context_includes_pull_request_activity_history() -> None:
+    pr = PullRequestData(
+        ref=PullRequestRef("owner", "repo", 1),
+        title="Update action trigger",
+        author="alice",
+        base_branch="main",
+        head_branch="feature",
+        files=(
+            ChangedFile(
+                "action.yml",
+                additions=2,
+                deletions=1,
+                hunks=("+issue_comment",),
+            ),
+        ),
+        diff_text="",
+        activities=(
+            PullRequestActivity(
+                kind="conversation",
+                author="reviewer",
+                body="Please rerun the review from the PR page.",
+                created_at="2026-05-30T10:00:00Z",
+                url="https://github.com/owner/repo/pull/1#issuecomment-1",
+            ),
+            PullRequestActivity(
+                kind="inline",
+                author="maintainer",
+                body="This needs an issue_comment trigger.",
+                path="action.yml",
+                line=57,
+            ),
+        ),
+    )
+
+    context = build_llm_context(pr, findings=[], max_hunk_chars=100)
+
+    assert "PR activity history:" in context.prompt
+    assert "conversation by reviewer at 2026-05-30T10:00:00Z" in context.prompt
+    assert "Please rerun the review from the PR page." in context.prompt
+    assert "inline by maintainer on action.yml:57" in context.prompt
+    assert "This needs an issue_comment trigger." in context.prompt

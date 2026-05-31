@@ -9,6 +9,8 @@ WORKFLOW_RELATIVE_PATH = Path(".github/workflows/xengineer-pr-review.yml")
 
 def render_action_workflow(
     action_uses: str = DEFAULT_ACTION_USES,
+    comment_mode: str = "conversation",
+    review_action: str = "comment",
     language: str = "zh",
 ) -> str:
     # GitHub expressions need doubled braces inside this f-string template.
@@ -17,21 +19,39 @@ def render_action_workflow(
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+{_render_issues_permission(comment_mode)}
   pull-requests: write
 
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: ${{{{ !github.event.pull_request.draft }}}}
+    if: >-
+      ${{{{
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          ) &&
+          contains(github.event.comment.body, '/xengineer review')
+        )
+      }}}}
     steps:
       - name: Run XEngineer PR review
         uses: {action_uses}
         with:
-          pr-url: ${{{{ github.event.pull_request.html_url }}}}
+          pr-url: ${{{{ github.event.pull_request.html_url || format('https://github.com/{{0}}/pull/{{1}}', github.repository, github.event.issue.number) }}}}
           github-token: ${{{{ github.token }}}}
+          comment-mode: {comment_mode}
+          review-action: {review_action}
           language: {language}
           deepseek-api-key: ${{{{ secrets.DEEPSEEK_API_KEY }}}}
           openai-api-key: ${{{{ secrets.OPENAI_API_KEY }}}}
@@ -39,9 +59,17 @@ jobs:
 """
 
 
+def _render_issues_permission(comment_mode: str) -> str:
+    if comment_mode == "conversation":
+        return "  issues: write"
+    return "  issues: read"
+
+
 def init_action_workflow(
     repo_path: str | Path = ".",
     action_uses: str = DEFAULT_ACTION_USES,
+    comment_mode: str = "conversation",
+    review_action: str = "comment",
     language: str = "zh",
     overwrite: bool = False,
 ) -> Path:
@@ -55,7 +83,12 @@ def init_action_workflow(
 
     workflow_path.parent.mkdir(parents=True, exist_ok=True)
     workflow_path.write_text(
-        render_action_workflow(action_uses=action_uses, language=language),
+        render_action_workflow(
+            action_uses=action_uses,
+            comment_mode=comment_mode,
+            review_action=review_action,
+            language=language,
+        ),
         encoding="utf-8",
     )
     return workflow_path

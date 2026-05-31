@@ -1,7 +1,10 @@
+import pytest
+
 from xengineer_pr_review.llm import LLMResult, MockLLMClient
 from xengineer_pr_review.models import (
     EvidenceReference,
     PostedComment,
+    PullRequestActivity,
     PullRequestData,
     PullRequestRef,
     ReviewFinding,
@@ -90,6 +93,41 @@ class MarkdownLLMClient:
         )
 
 
+class ActivityGitHubClient(FakeGitHubClient):
+    def fetch_pr(self, ref: PullRequestRef) -> PullRequestData:
+        pr = super().fetch_pr(ref)
+        return PullRequestData(
+            ref=pr.ref,
+            title=pr.title,
+            author=pr.author,
+            base_branch=pr.base_branch,
+            head_branch=pr.head_branch,
+            files=pr.files,
+            diff_text=pr.diff_text,
+            head_sha=pr.head_sha,
+            activities=(
+                PullRequestActivity(
+                    kind="conversation",
+                    author="reviewer",
+                    body="Please inspect the prior PR discussion before reviewing.",
+                    created_at="2026-05-30T10:00:00Z",
+                ),
+            ),
+        )
+
+
+class PromptCapturingLLMClient:
+    supports_review_tools = False
+
+    def __init__(self) -> None:
+        self.prompt = ""
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is None
+        self.prompt = prompt
+        return LLMResult(summary="AI summary")
+
+
 def test_pipeline_merges_ai_risks_with_rule_findings_and_sets_metadata() -> None:
     pipeline = ReviewPipeline(github=FakeGitHubClient(), llm=MarkdownLLMClient())
 
@@ -104,6 +142,16 @@ def test_pipeline_merges_ai_risks_with_rule_findings_and_sets_metadata() -> None
     assert any(finding.source == "ai" for finding in report.findings)
     assert report.suggestions[0].title == "AI suggestion"
     assert report.llm_status == "ok"
+
+
+def test_pipeline_preserves_pr_activity_for_llm_context() -> None:
+    llm = PromptCapturingLLMClient()
+    pipeline = ReviewPipeline(github=ActivityGitHubClient(), llm=llm)
+
+    pipeline.run("https://github.com/owner/repo/pull/1")
+
+    assert "PR activity history:" in llm.prompt
+    assert "Please inspect the prior PR discussion before reviewing." in llm.prompt
 
 
 def test_pipeline_enriches_ai_items_with_code_evidence_permalink() -> None:
@@ -342,10 +390,20 @@ def test_pipeline_logs_when_tool_aware_llm_cannot_receive_tools(caplog) -> None:
 class PostingGitHubClient(FakeGitHubClient):
     def __init__(self) -> None:
         self.posts: list[tuple[PullRequestRef, str]] = []
+        self.reviews: list[tuple[PullRequestRef, str, str]] = []
 
     def post_pr_comment(self, ref: PullRequestRef, body: str) -> PostedComment:
         self.posts.append((ref, body))
         return PostedComment(html_url="https://github.com/owner/repo/pull/1#issuecomment-9")
+
+    def post_pr_review(
+        self,
+        ref: PullRequestRef,
+        body: str,
+        review_action: str = "comment",
+    ) -> PostedComment:
+        self.reviews.append((ref, body, review_action))
+        return PostedComment(html_url="https://github.com/owner/repo/pull/1#pullrequestreview-9")
 
 
 def test_pipeline_posts_review_comment_from_pr_url() -> None:
@@ -356,6 +414,46 @@ def test_pipeline_posts_review_comment_from_pr_url() -> None:
 
     assert result.html_url.endswith("#issuecomment-9")
     assert github.posts == [(PullRequestRef("owner", "repo", 1), "# Report")]
+
+
+def test_pipeline_posts_pull_request_review_from_pr_url() -> None:
+    github = PostingGitHubClient()
+    pipeline = ReviewPipeline(github=github, llm=MockLLMClient())
+
+    result = pipeline.post_review_comment(
+        "https://github.com/owner/repo/pull/1",
+        "# Report",
+        comment_mode="review",
+    )
+
+    assert result.html_url.endswith("#pullrequestreview-9")
+    assert github.posts == []
+    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "comment")]
+
+
+def test_pipeline_passes_review_action_to_pull_request_review() -> None:
+    github = PostingGitHubClient()
+    pipeline = ReviewPipeline(github=github, llm=MockLLMClient())
+
+    pipeline.post_review_comment(
+        "https://github.com/owner/repo/pull/1",
+        "# Report",
+        comment_mode="review",
+        review_action="approve",
+    )
+
+    assert github.reviews == [(PullRequestRef("owner", "repo", 1), "# Report", "approve")]
+
+
+def test_pipeline_reports_when_client_cannot_publish_pull_request_reviews() -> None:
+    pipeline = ReviewPipeline(github=FetchOnlyGitHubClient(), llm=MockLLMClient())
+
+    with pytest.raises(ValueError, match="does not support pull request review comments"):
+        pipeline.post_review_comment(
+            "https://github.com/owner/repo/pull/1",
+            "# Report",
+            comment_mode="review",
+        )
 
 
 class FakeWebSearch:

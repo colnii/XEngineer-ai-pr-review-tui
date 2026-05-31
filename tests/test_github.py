@@ -118,6 +118,26 @@ def test_fetch_pr_uses_authenticated_pull_api_for_diff(monkeypatch) -> None:
             "application/vnd.github.diff",
             "Bearer private-token",
         ),
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
     ]
 
 
@@ -140,7 +160,156 @@ def test_fetch_pr_allows_public_pr_without_token(monkeypatch) -> None:
     pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
 
     assert pr.title == "Demo PR"
-    assert authorizations == [None, None]
+    assert authorizations == [None, None, None, None, None, None]
+
+
+def test_fetch_pr_includes_pull_request_activity(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "user": {"login": "reviewer"},
+                        "body": "Please rerun after the latest commit.",
+                        "created_at": "2026-05-30T10:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#issuecomment-1",
+                    }
+                ],
+            )
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "user": {"login": "maintainer"},
+                        "body": "Looks close, but tests are missing.",
+                        "state": "COMMENTED",
+                        "submitted_at": "2026-05-30T11:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-1",
+                    }
+                ],
+            )
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "user": {"login": "maintainer"},
+                        "body": "This branch misses the manual trigger path.",
+                        "path": "action.yml",
+                        "line": 57,
+                        "created_at": "2026-05-30T12:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#discussion_r1",
+                    }
+                ],
+            )
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": "abcdef1234567890",
+                        "commit": {
+                            "message": "feat: add action trigger",
+                            "author": {"name": "Alice", "date": "2026-05-30T09:00:00Z"},
+                        },
+                        "html_url": "https://github.com/owner/repo/commit/abcdef1",
+                    }
+                ],
+            )
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert [(activity.kind, activity.author) for activity in pr.activities] == [
+        ("commit", "Alice"),
+        ("conversation", "reviewer"),
+        ("review", "maintainer"),
+        ("inline", "maintainer"),
+    ]
+    assert pr.activities[0].commit_sha == "abcdef1"
+    assert pr.activities[1].body == "Please rerun after the latest commit."
+    assert pr.activities[2].state == "COMMENTED"
+    assert pr.activities[3].path == "action.yml"
+    assert pr.activities[3].line == 57
+
+
+def test_fetch_pr_continues_when_one_activity_endpoint_fails(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    caplog.set_level("WARNING")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100":
+            return httpx.Response(403, json={"message": "rate limited"})
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert pr.title == "Demo PR"
+    assert pr.activities == ()
+    assert "Failed to fetch PR conversation comments" in caplog.text
+
+
+def test_fetch_pr_continues_when_activity_payload_is_invalid(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    caplog.set_level("WARNING")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100":
+            return httpx.Response(200, content=b"not-json")
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert pr.title == "Demo PR"
+    assert pr.activities == ()
+    assert "Failed to fetch PR reviews" in caplog.text
+
+
+def test_fetch_pr_activity_pagination_is_bounded(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        requests.append(url)
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": f"{index:07d}",
+                        "commit": {"message": f"commit {index}", "author": {"name": "Alice"}},
+                    }
+                    for index in range(100)
+                ],
+                headers={
+                    "Link": (
+                        '<https://api.github.com/repos/owner/repo/pulls/1/commits'
+                        '?page=2&per_page=100>; rel="next"'
+                    )
+                },
+            )
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert len([activity for activity in pr.activities if activity.kind == "commit"]) == 100
+    assert not any("page=2" in request for request in requests)
 
 
 def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
@@ -172,6 +341,103 @@ def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
             {"body": "# Report"},
         )
     ]
+
+
+def test_post_pr_review_posts_markdown_to_pull_reviews(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[tuple[str, str | None, dict]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(
+            (
+                str(request.url),
+                request.headers.get("authorization"),
+                json.loads(request.content.decode()),
+            )
+        )
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-9"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(PullRequestRef("owner", "repo", 1), "# Report")
+
+    assert result.html_url == "https://github.com/owner/repo/pull/1#pullrequestreview-9"
+    assert requests == [
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/reviews",
+            "Bearer write-token",
+            {"body": "# Report", "event": "COMMENT"},
+        )
+    ]
+
+
+def test_post_pr_review_can_request_changes(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-10"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(
+        PullRequestRef("owner", "repo", 1),
+        "# Report",
+        review_action="request-changes",
+    )
+
+    assert result.html_url.endswith("#pullrequestreview-10")
+    assert requests == [{"body": "# Report", "event": "REQUEST_CHANGES"}]
+
+
+def test_post_pr_review_can_approve(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-11"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    result = client.post_pr_review(
+        PullRequestRef("owner", "repo", 1),
+        "# Report",
+        review_action="approve",
+    )
+
+    assert result.html_url.endswith("#pullrequestreview-11")
+    assert requests == [{"body": "# Report", "event": "APPROVE"}]
+
+
+def test_post_pr_review_truncates_oversized_body(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "write-token")
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content.decode()))
+        return httpx.Response(
+            201,
+            json={"html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-12"},
+        )
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    client.post_pr_review(PullRequestRef("owner", "repo", 1), "a" * 70_000)
+
+    body = requests[0]["body"]
+    assert len(body) <= 65_536
+    assert "truncated by XEngineer" in body
 
 
 def test_fetch_file_text_reads_content_at_requested_ref(monkeypatch) -> None:
@@ -327,6 +593,14 @@ def test_fetch_tree_paths_rejects_truncated_recursive_tree(monkeypatch) -> None:
 
 
 def _pull_api_response(request: httpx.Request) -> httpx.Response:
+    activity_urls = {
+        "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100",
+        "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100",
+        "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100",
+        "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100",
+    }
+    if str(request.url) in activity_urls:
+        return httpx.Response(200, json=[])
     if str(request.url) != PULL_API_URL:
         return httpx.Response(404)
     if request.headers.get("accept") == "application/vnd.github.diff":

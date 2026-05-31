@@ -36,11 +36,12 @@ xpr-review
 - TUI 作为主要入口。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
+- 会把 PR Conversation 评论、review 正文、行内 review comment 和 commit message 纳入审查上下文。
 - 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
 - 支持 Markdown 报告导出。
-- 支持人工确认后发布 PR 顶层 Conversation 评论。
-- 支持作为 GitHub Action 集成到其他仓库，在 PR 创建、重新打开或标记 ready for review
-  后自动发布一条顶层 Conversation 评论。
+- 支持人工确认后发布 PR 顶层 Conversation 评论，也可选择发布为 PR review 正文。
+- 支持作为 GitHub Action 集成到其他仓库，在 PR 创建、重新打开、标记 ready for review，
+  或有人在 PR 页面评论 `/xengineer review` 后发布一条 PR 评论。
 - 默认中文界面，可切换英文。
 
 ## 使用方式
@@ -109,13 +110,25 @@ TUI 不会输入、显示或保存 token。
 
 如需把生成的报告发布为 PR 顶层 Conversation 评论，请先配置 GitHub token，然后在分析
 完成后点击 TUI 的 `发布评论` 按钮。第一次点击只进入确认状态，第二次点击才会真正发布。
-细粒度 token 需要目标仓库的 `Issues: write` 或 `Pull requests: write` 权限。
+细粒度 token 需要目标仓库的 `Issues: write` 权限。
 
 同一个写入路径也可以从命令行触发；因为命令行没有 TUI 预览步骤，所以必须显式传入确认参数：
 
 ```bash
 xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
 ```
+
+如果要把同一份 Markdown 报告发布成 PR review 正文，使用 review 模式：
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
+```
+
+review 模式默认提交不阻塞合并的 `COMMENT` review。如果确认要提交批准或阻塞式修改请求，
+再显式追加 `--review-action approve` 或 `--review-action request-changes`。这两个动作可能影响
+启用了 review 门禁的仓库是否可合并，所以默认保持 comment。review 模式需要 `Pull requests: write`
+权限；Conversation 评论模式需要 `Issues: write`。严格 token 配置下，如果 review 模式也要把
+PR Conversation 历史纳入分析上下文，还需要 `Issues: read`。
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
 在 CI 等非交互式自动化环境里，可以用 `--auto-publish` 代替 `--confirm-publish`，
@@ -132,29 +145,53 @@ name: XEngineer PR Review
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          ) &&
+          contains(github.event.comment.body, '/xengineer review')
+        )
+      }}
     steps:
       - name: Run XEngineer PR review
         uses: colnii/XEngineer-ai-pr-review-tui@v1
         with:
-          pr-url: ${{ github.event.pull_request.html_url }}
+          pr-url: ${{ github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number) }}
           github-token: ${{ github.token }}
+          comment-mode: conversation
+          review-action: comment
           language: zh
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           tavily-api-key: ${{ secrets.TAVILY_API_KEY }}
 ```
 
-默认 workflow 只在 PR 创建、重新打开、从 draft 变成 ready for review 时发一条新的
-PR Conversation 评论；它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发。
+默认 workflow 会在 PR 创建、重新打开、从 draft 变成 ready for review，或有人在 PR 页面评论
+`/xengineer review` 且该评论者是 owner、member 或 collaborator 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
+`comment-mode: review`。`review-action` 默认是 `comment`，也可以显式设为 `approve` 或
+`request-changes`，用于需要进入合并门禁的 workflow。Conversation 评论模式需要保留
+`issues: write` 权限；使用 review 模式时保留 `issues: read` 读取 PR Conversation 历史，
+并保留 `pull-requests: write` 发布 review 正文。它不会编辑旧评论，也不会在每次 push 新
+commit 时重复触发，除非有人再次
+发送这个命令评论。
 如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
 没有模型 key 时，CLI 会按现有规则回退到确定性的 mock 输出。
 
@@ -164,8 +201,10 @@ PR Conversation 评论；它不会编辑旧评论，也不会在每次 push 新 
 xpr-review init-action --repo-path /path/to/target/repo
 ```
 
-如果命令就在目标仓库里执行，可以省略 `--repo-path`。如果要指向 fork、分支或发布版本，
-用 `--action-uses owner/repo@ref`；只有确认要替换已有文件时才加 `--overwrite`。
+如果命令就在目标仓库里执行，可以省略 `--repo-path`。如果要生成发布 PR review 正文的
+workflow，使用 `--comment-mode review`；如果要选择 review 状态，使用
+`--review-action comment|approve|request-changes`。如果要指向 fork、分支或发布版本，用
+`--action-uses owner/repo@ref`；只有确认要替换已有文件时才加 `--overwrite`。
 
 ### 真实 AI 审核验收测试
 
@@ -239,9 +278,10 @@ xpr-review --language en
 
 ## 上下文策略
 
-应用会把 PR 元数据、规则风险信号和 diff 片段发送给模型。适合审查的文件不再按数量裁剪。
-prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 仍会裁剪。
-被跳过的文件会在最终报告中列出。
+应用会把 PR 元数据、规则风险信号和 diff 片段发送给模型，也会纳入 PR Conversation 评论、
+review 正文、行内 review comment 和 commit message 等历史/当前 PR 活动。适合审查的文件不再按数量裁剪。
+prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 和过长 PR
+活动正文仍会裁剪。被跳过的文件会在最终报告中列出。
 
 diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 ID（例如 `F1`），模型可以调用
 `read_file(file_id="F1")`，不需要复制很长的仓库路径。`read_file` 和 `grep_code` 会返回带行号的
@@ -257,9 +297,12 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 ## 限制
 
 - 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。
-- GitHub Action 只发布顶层 PR Conversation 评论。默认生成的 workflow 每次触发都会发一条新评论，
+- GitHub Action 默认发布顶层 PR Conversation 评论。默认生成的 workflow 每次触发都会发一条新评论，
   不会编辑旧的 XEngineer 评论。
-- 暂不支持行内 review comment，也不支持 approve/request-changes review 状态。
+- 已支持 `--comment-mode review` 发布 PR review 正文；也支持显式使用
+  `--review-action approve` 或 `--review-action request-changes` 进入 review 门禁流程。
+  暂不支持行内 review comment。
+- 发布到 GitHub 的评论正文会在发送前做长度上限截断，避免超长报告触发 GitHub API 校验失败。
 - 没有仓库级语义索引。
 - 工具调用有轮数和输出限制；如果模型触达限制或工具失败，报告会显示 warning。
 
@@ -268,5 +311,5 @@ diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 
 - 发布轻量 npm wrapper，评委可用
   `npx xengineer-pr-review --judge-demo` 启动打包后的 Python 应用。
 - 基于相同 Review Core 的 Web UI。
-- 支持 PR review 模式，在完成 GitHub 行内评论 position 映射后发布可选行内评论。
+- 完成 GitHub 行内评论 position 映射后发布可选行内 review comment。
 - 可配置的组织级审查规则。

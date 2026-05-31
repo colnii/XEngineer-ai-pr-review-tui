@@ -11,14 +11,38 @@ from xengineer_pr_review.action_workflow import (
 
 
 def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> None:
-    workflow = render_action_workflow(action_uses="owner/xengineer@v1", language="en")
+    workflow = render_action_workflow(
+        action_uses="owner/xengineer@v1",
+        comment_mode="review",
+        review_action="approve",
+        language="en",
+    )
 
     assert "types: [opened, reopened, ready_for_review]" in workflow
     assert "synchronize" not in workflow
     assert "uses: owner/xengineer@v1" in workflow
     assert "github-token: ${{ github.token }}" in workflow
+    assert "comment-mode: review" in workflow
+    assert "review-action: approve" in workflow
     assert "language: en" in workflow
+    assert "issues: read" in workflow
     assert "issues: write" not in workflow
+    assert "pull-requests: write" in workflow
+
+
+def test_render_action_workflow_supports_manual_pr_comment_command() -> None:
+    workflow = render_action_workflow(action_uses="owner/xengineer@v1", language="en")
+
+    assert "issue_comment:" in workflow
+    assert "types: [created]" in workflow
+    assert "github.event_name == 'issue_comment'" in workflow
+    assert "github.event.issue.pull_request" in workflow
+    assert "github.event.comment.author_association == 'OWNER'" in workflow
+    assert "github.event.comment.author_association == 'MEMBER'" in workflow
+    assert "github.event.comment.author_association == 'COLLABORATOR'" in workflow
+    assert "contains(github.event.comment.body, '/xengineer review')" in workflow
+    assert "format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number)" in workflow
+    assert "issues: write" in workflow
     assert "pull-requests: write" in workflow
 
 
@@ -30,6 +54,8 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
     written_path = init_action_workflow(
         repo_path=tmp_path,
         action_uses="owner/xengineer@v1",
+        comment_mode="review",
+        review_action="request-changes",
         language="zh",
     )
 
@@ -37,6 +63,8 @@ def test_init_action_workflow_writes_workflow_under_repo_path(tmp_path: Path) ->
     assert written_path.exists()
     workflow = written_path.read_text(encoding="utf-8")
     assert "uses: owner/xengineer@v1" in workflow
+    assert "comment-mode: review" in workflow
+    assert "review-action: request-changes" in workflow
     assert "language: zh" in workflow
 
 

@@ -1,5 +1,5 @@
 name: XEngineer PR Review
-description: Review a GitHub pull request with XEngineer and publish one PR conversation comment.
+description: Review a GitHub pull request with XEngineer and publish one PR comment.
 
 branding:
   icon: git-pull-request
@@ -11,9 +11,17 @@ inputs:
     required: false
     default: ""
   github-token:
-    description: GitHub token used to read the PR and publish the PR conversation comment.
+    description: GitHub token used to read the PR and publish the PR comment.
     required: false
     default: ""
+  comment-mode:
+    description: Comment target, either conversation or review.
+    required: false
+    default: conversation
+  review-action:
+    description: Review action when comment-mode is review; one of comment, approve, or request-changes.
+    required: false
+    default: comment
   language:
     description: Report language, either zh or en.
     required: false
@@ -50,7 +58,7 @@ runs:
     - name: Publish PR review
       shell: bash
       env:
-        PR_URL: ${{ inputs.pr-url || github.event.pull_request.html_url }}
+        PR_URL: ${{ inputs.pr-url || github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number) }}
         GITHUB_TOKEN: ${{ inputs.github-token || github.token }}
         XENGINEER_DEEPSEEK_API_KEY: ${{ inputs.deepseek-api-key }}
         XENGINEER_OPENAI_API_KEY: ${{ inputs.openai-api-key }}
@@ -81,6 +89,8 @@ runs:
           xengineer_pr_review
           --pr-url "${PR_URL}"
           --publish-comment
+          --comment-mode "${{ inputs.comment-mode }}"
+          --review-action "${{ inputs.review-action }}"
           --auto-publish
           --language "${{ inputs.language }}"
         )

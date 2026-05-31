@@ -39,11 +39,14 @@ the `socksio` dependency is installed.
 - TUI entry point.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
+- PR conversation comments, review bodies, inline review comments, and commit messages
+  are included as review context.
 - Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
 - Markdown export.
-- Manual PR conversation comment publishing after human confirmation.
-- GitHub Action integration that publishes one top-level PR conversation comment when a PR is
-  opened, reopened, or marked ready for review.
+- Manual PR conversation comment publishing after human confirmation, with an optional
+  pull request review body mode.
+- GitHub Action integration that publishes one PR comment when a PR is opened, reopened,
+  marked ready for review, or manually requested with `/xengineer review` on the PR page.
 
 ## Usage
 
@@ -118,7 +121,7 @@ store tokens.
 To publish the generated report as a top-level PR conversation comment, configure
 a token and use the TUI `Publish Comment` button after analysis. The first click
 asks for confirmation; the second click posts the comment. Fine-grained tokens need
-`Issues: write` or `Pull requests: write` on the target repository.
+`Issues: write` on the target repository.
 
 The same write path is available from the command line, but it requires an
 explicit confirmation flag because there is no TUI preview step:
@@ -126,6 +129,21 @@ explicit confirmation flag because there is no TUI preview step:
 ```bash
 xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --confirm-publish
 ```
+
+To publish the same Markdown report as a pull request review body instead, select
+review mode:
+
+```bash
+xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --comment-mode review --confirm-publish
+```
+
+Review mode defaults to a non-blocking `COMMENT` review. To intentionally submit
+an approval or a blocking change request, add `--review-action approve` or
+`--review-action request-changes`. These actions can affect branch protection on
+repositories that require reviews, so keep the default unless the automation is
+trusted for merge gating. Review mode requires `Pull requests: write`; conversation
+comment mode requires `Issues: write`. Strict tokens should also grant
+`Issues: read` when review mode needs PR conversation history in the analysis context.
 
 For deterministic local testing, add `--mock-llm` to publish the mock report body.
 In non-interactive automation, `--auto-publish` can be used instead of
@@ -142,21 +160,39 @@ name: XEngineer PR Review
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          ) &&
+          contains(github.event.comment.body, '/xengineer review')
+        )
+      }}
     steps:
       - name: Run XEngineer PR review
         uses: colnii/XEngineer-ai-pr-review-tui@v1
         with:
-          pr-url: ${{ github.event.pull_request.html_url }}
+          pr-url: ${{ github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number) }}
           github-token: ${{ github.token }}
+          comment-mode: conversation
+          review-action: comment
           language: en
           deepseek-api-key: ${{ secrets.DEEPSEEK_API_KEY }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -164,8 +200,14 @@ jobs:
 ```
 
 The default workflow publishes one new PR conversation comment after the PR is
-opened, reopened, or moved out of draft. It does not edit older bot comments and
-does not run on every pushed commit. Configure `DEEPSEEK_API_KEY` or
+opened, reopened, moved out of draft, or after someone comments `/xengineer review`
+on the PR page as an owner, member, or collaborator. Set `comment-mode: review` to publish the report as a pull request
+review body instead; `review-action` defaults to `comment`, with `approve` and
+`request-changes` available for explicit merge-gating workflows. It does not edit
+older bot comments and does not run on every pushed commit unless that command comment is added.
+Keep `issues: write` for conversation comments. When using review mode, keep
+`issues: read` for PR conversation history and `pull-requests: write` for the
+review body. Configure `DEEPSEEK_API_KEY` or
 `OPENAI_API_KEY` as a repository secret for real model output; without a model
 key, the CLI falls back to deterministic mock output.
 
@@ -177,8 +219,10 @@ xpr-review init-action --repo-path /path/to/target/repo --language en
 ```
 
 If you run the command inside the target repository, omit `--repo-path`. Use
-`--action-uses owner/repo@ref` to point at a fork, branch, or release tag, and
-`--overwrite` only when replacing an existing generated workflow.
+`--comment-mode review` to generate a workflow that publishes pull request review
+body comments, `--review-action comment|approve|request-changes` to choose the
+review state, `--action-uses owner/repo@ref` to point at a fork, branch, or
+release tag, and `--overwrite` only when replacing an existing generated workflow.
 
 ### Live AI Review Acceptance Test
 
@@ -244,9 +288,11 @@ The app also supports `--mock-llm` for deterministic local review output. For ju
 ## Context Strategy
 
 The app sends PR metadata, deterministic rule findings, and diff snippets to the model.
-Review-relevant files are no longer trimmed by count. The prompt skips obvious low-signal files
-such as lockfiles, generated bundles, binary assets, and archives; long hunks are still trimmed.
-Skipped files are listed in the final report.
+It also includes current and historical PR activity from conversation comments, review bodies,
+inline review comments, and commit messages. Review-relevant files are no longer trimmed by count.
+The prompt skips obvious low-signal files such as lockfiles, generated bundles, binary assets,
+and archives; long hunks and very long PR activity bodies are still trimmed. Skipped files are
+listed in the final report.
 
 Diff hunks are indexed with changed line ranges. Changed files also get short IDs such as `F1`,
 so the model can call `read_file(file_id="F1")` instead of copying long repository paths.
@@ -265,9 +311,13 @@ When a real model is configured, the LangGraph agent can request extra context w
 
 - Private repository PRs require a local token with read access; GitHub may return
   404 when the token cannot access the repository.
-- GitHub Action comments are top-level PR conversation comments only. The default generated
+- GitHub Action comments default to top-level PR conversation comments. The generated
   workflow publishes a new comment per trigger and does not edit an older XEngineer comment.
-- Inline review comments and approve/request-changes review states are not implemented.
+- Pull request review body comments are supported with `--comment-mode review`.
+  `--review-action approve` and `--review-action request-changes` are available
+  for explicit review-gating workflows, but inline review comments are not implemented.
+- Published GitHub comment bodies are capped before sending to avoid GitHub API
+  validation failures on oversized reports.
 - No repository-wide semantic indexing.
 - Tool calls are bounded; if the model hits a tool limit or a tool fails, the report includes a warning.
 
@@ -276,5 +326,5 @@ When a real model is configured, the LangGraph agent can request extra context w
 - One-command judge runner via npm, for example `npx xengineer-pr-review --judge-demo`,
   backed by a small Node wrapper around the packaged Python app.
 - Web UI using the same review core.
-- Pull request review mode with optional inline comments after GitHub inline-position mapping is implemented.
+- Optional inline review comments after GitHub inline-position mapping is implemented.
 - Configurable organization-specific review rules.
