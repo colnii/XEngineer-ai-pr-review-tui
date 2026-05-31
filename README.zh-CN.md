@@ -293,16 +293,16 @@ review 正文、行内 review comment、timeline 事件和 commit message 等历
 
 diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 ID（例如 `F1`），模型可以调用
 `read_file(file_id="F1")`，不需要复制很长的仓库路径。`read_file` 和 `grep_code` 会返回带行号的
-代码上下文；`read_pr_activity` 可按类型重新读取已抓取的 PR 讨论/历史；`web_search` 会返回稳定
-ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词要求把这些引用写进风险或建议的
-`evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
+代码上下文；`read_pr_activity` 可按类型重新读取已抓取的 PR 讨论/历史，并为这些活动项返回稳定
+ID（例如 `[A1]`）；`web_search` 会返回稳定 ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。
+模型提示词要求把这些引用写进风险或建议的 `evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
 
 配置真实模型后，LangGraph agent 可以按需请求更多上下文：
 
 - `read_file`：读取 PR head commit 上的仓库相对路径文件。
 - `grep_code`：在 PR head commit 的审查相关文件中搜索代码。
 - `read_pr_activity`：读取已抓取的 PR 评论、review、行内评论、timeline 事件和 commit，
-  可按类型过滤。
+  可按类型过滤；返回的 `[A1]` ID 可在最终报告中作为 `pr_activity` 证据引用。
 - `web_search`：仅在配置 `TAVILY_API_KEY` 后搜索公开网页上下文。
 
 ## 限制

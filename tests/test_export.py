@@ -32,6 +32,13 @@ def test_render_markdown_contains_report_sections() -> None:
                         "url": "https://example.test/oauth-advisory",
                         "snippet": "Rotate tokens after exposure.",
                     },
+                    {
+                        "kind": "pr_activity",
+                        "label": "A1",
+                        "title": "conversation by reviewer at 2026-05-30T10:00:00Z",
+                        "url": "https://github.com/owner/repo/pull/1#issuecomment-10",
+                        "snippet": "Please rerun after the latest push.",
+                    },
                 ],
             )
         ],
@@ -57,6 +64,12 @@ def test_render_markdown_contains_report_sections() -> None:
     assert "证据" in markdown
     assert "`src/auth.py:12-16`" in markdown
     assert "[W1] [OAuth advisory](https://example.test/oauth-advisory)" in markdown
+    assert (
+        "[A1] [conversation by reviewer at 2026-05-30T10:00:00Z]"
+        "(https://github.com/owner/repo/pull/1#issuecomment-10)"
+        in markdown
+    )
+    assert "Please rerun after the latest push." in markdown
     assert "Add coverage for auth behavior." in markdown
 
 

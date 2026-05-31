@@ -306,17 +306,18 @@ Skipped files are listed in the final report.
 Diff hunks are indexed with changed line ranges. Changed files also get short IDs such as `F1`,
 so the model can call `read_file(file_id="F1")` instead of copying long repository paths.
 `read_file` and `grep_code` return line-numbered code context, `read_pr_activity` lets the model
-re-open fetched PR discussion/history by type, and `web_search` returns stable IDs such as `[W1]`
-with the result URL and snippet. The model is prompted to copy those references into `evidence`
-objects on risks or suggestions; the TUI and Markdown export render that evidence under the
-corresponding review item.
+re-open fetched PR discussion/history by type and returns stable IDs such as `[A1]` for those
+activity items, and `web_search` returns stable IDs such as `[W1]` with the result URL and snippet.
+The model is prompted to copy those references into `evidence` objects on risks or suggestions;
+the TUI and Markdown export render that evidence under the corresponding review item.
 
 When a real model is configured, the LangGraph agent can request extra context with:
 
 - `read_file`: read a repository-relative file from the PR head commit.
 - `grep_code`: search review-relevant repository files at the PR head commit.
 - `read_pr_activity`: read fetched PR comments, reviews, inline comments, timeline events,
-  and commits, optionally filtered by kind.
+  and commits, optionally filtered by kind; returned `[A1]` IDs can be cited as `pr_activity`
+  evidence in the final report.
 - `web_search`: search public web context only when `TAVILY_API_KEY` is configured.
 
 ## Limitations

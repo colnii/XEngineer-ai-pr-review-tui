@@ -225,6 +225,31 @@ def test_parse_llm_json_output_treats_url_citation_as_web_evidence() -> None:
     assert evidence.url == "https://example.test/api-change"
 
 
+def test_parse_llm_json_output_accepts_pr_activity_citation_id() -> None:
+    result = parse_llm_output(
+        """
+        {
+          "summary": "Prior PR discussion matters.",
+          "risks": [
+            {
+              "severity": "low",
+              "title": "Reviewer already raised this",
+              "explanation": "A previous PR comment asked for the same check.",
+              "citations": [
+                {"kind": "pr_activity", "label": "A1"}
+              ]
+            }
+          ],
+          "suggestions": []
+        }
+        """
+    )
+
+    evidence = result.risks[0].evidence[0]
+    assert evidence.kind == "pr_activity"
+    assert evidence.label == "A1"
+
+
 def test_parse_llm_json_output_keeps_path_and_url_citation_as_code_evidence() -> None:
     result = parse_llm_output(
         """
@@ -262,7 +287,7 @@ def test_parse_llm_markdown_output_extracts_evidence_metadata() -> None:
         The PR adds structured evidence.
 
         ### Risks
-        - Low: Citation fallback can be missing. File: src/review.py. Evidence: src/review.py:12-16; [W1] https://example.test/source
+        - Low: Citation fallback can be missing. File: src/review.py. Evidence: src/review.py:12-16; [W1] https://example.test/source; [A2]
 
         ### Suggestions
         - Test: Add coverage for markdown evidence parsing. File: tests/test_llm.py. Evidence: tests/test_llm.py:45. Confidence: high.
@@ -277,6 +302,8 @@ def test_parse_llm_markdown_output_extracts_evidence_metadata() -> None:
     assert risk_evidence[1].kind == "web"
     assert risk_evidence[1].label == "W1"
     assert risk_evidence[1].url == "https://example.test/source"
+    assert risk_evidence[2].kind == "pr_activity"
+    assert risk_evidence[2].label == "A2"
     suggestion_evidence = result.suggestions[0].evidence[0]
     assert suggestion_evidence.path == "tests/test_llm.py"
     assert suggestion_evidence.line_start == 45

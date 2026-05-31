@@ -190,6 +190,8 @@ def _review_system_message(language: str) -> str:
         "Use read_file and grep_code line numbers as code evidence. "
         "Do not include snippets for code evidence; line numbers are the source of truth. "
         "Use web_search result ids like W1 plus the result URL as web evidence for external facts. "
+        "Use read_pr_activity result ids like A1 as pr_activity evidence for prior PR comments, "
+        "reviews, commits, and timeline events. "
         f"{prompt_language_instruction(language)}"
     )
 
@@ -467,7 +469,15 @@ def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
     url = _clean_text(item.get("url") or item.get("link"))
     kind_text = _clean_text(item.get("kind")).lower()
     path = _clean_text(item.get("path") or item.get("file") or item.get("related_file"))
-    kind = "web" if kind_text == "web" or (not kind_text and url and not path) else "code"
+    label = _clean_text(item.get("label") or item.get("id") or item.get("source_id"))
+    if kind_text in {"pr_activity", "activity", "pr-activity"} or (
+        not kind_text and _is_pr_activity_label(label)
+    ):
+        kind = "pr_activity"
+    elif kind_text == "web" or (not kind_text and url and not path):
+        kind = "web"
+    else:
+        kind = "code"
     if line_start is not None and line_end is None:
         line_end = line_start
     if line_start is not None and line_end is not None and line_end < line_start:
@@ -475,7 +485,7 @@ def _evidence_from_mapping(item: Any) -> EvidenceReference | None:
     return EvidenceReference(
         kind=kind,
         file_id=_clean_text(item.get("file_id") or item.get("fileId")),
-        label=_clean_text(item.get("label") or item.get("id") or item.get("source_id")),
+        label=label,
         path=path,
         line_start=line_start,
         line_end=line_end,
@@ -540,19 +550,32 @@ def _evidence_items_from_text(text: str) -> list[EvidenceReference]:
                 line_end=end,
             )
         )
-    web_match = re.search(
-        r"(?:\[(?P<label>[A-Za-z]\d+)\]\s*)?(?P<url>https?://[^\s;]+)",
+    for source_match in re.finditer(
+        r"\[(?P<label>[A-Za-z]\d+)\](?:\s*(?P<url>https?://[^\s;]+))?",
         text,
-    )
+    ):
+        label = _clean_text(source_match.group("label"))
+        url = _clean_text(source_match.group("url")).rstrip(".,)")
+        if _is_pr_activity_label(label):
+            items.append(EvidenceReference(kind="pr_activity", label=label, url=url))
+        elif url:
+            items.append(EvidenceReference(kind="web", label=label, url=url))
+    if not any(reference.kind == "web" and reference.url for reference in items):
+        web_match = re.search(r"(?P<url>https?://[^\s;]+)", text)
+    else:
+        web_match = None
     if web_match:
         items.append(
             EvidenceReference(
                 kind="web",
-                label=_clean_text(web_match.group("label")),
                 url=web_match.group("url").rstrip(".,)"),
             )
         )
     return items
+
+
+def _is_pr_activity_label(label: str) -> bool:
+    return re.fullmatch(r"A\d+", label.strip(), re.I) is not None
 
 
 def _extract_labeled_value(text: str, label: str) -> str:
