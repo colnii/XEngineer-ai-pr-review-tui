@@ -62,7 +62,7 @@ jobs:
 def _render_issues_permission(comment_mode: str) -> str:
     if comment_mode == "conversation":
         return "  issues: write"
-    return ""
+    return "  issues: read"
 
 
 def init_action_workflow(

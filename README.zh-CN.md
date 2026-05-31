@@ -127,7 +127,8 @@ xpr-review --pr-url "https://github.com/owner/repo/pull/1" --publish-comment --c
 review 模式默认提交不阻塞合并的 `COMMENT` review。如果确认要提交批准或阻塞式修改请求，
 再显式追加 `--review-action approve` 或 `--review-action request-changes`。这两个动作可能影响
 启用了 review 门禁的仓库是否可合并，所以默认保持 comment。review 模式需要 `Pull requests: write`
-权限；Conversation 评论模式需要 `Issues: write`。
+权限；Conversation 评论模式需要 `Issues: write`。严格 token 配置下，如果 review 模式也要把
+PR Conversation 历史纳入分析上下文，还需要 `Issues: read`。
 
 如需本地确定性测试，可以追加 `--mock-llm`，发布 mock 报告正文。
 在 CI 等非交互式自动化环境里，可以用 `--auto-publish` 代替 `--confirm-publish`，
@@ -187,8 +188,9 @@ jobs:
 `/xengineer review` 且该评论者是 owner、member 或 collaborator 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
 `comment-mode: review`。`review-action` 默认是 `comment`，也可以显式设为 `approve` 或
 `request-changes`，用于需要进入合并门禁的 workflow。Conversation 评论模式需要保留
-`issues: write` 权限；使用 review 模式时保留 workflow 里的 `pull-requests: write`
-权限。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次
+`issues: write` 权限；使用 review 模式时保留 `issues: read` 读取 PR Conversation 历史，
+并保留 `pull-requests: write` 发布 review 正文。它不会编辑旧评论，也不会在每次 push 新
+commit 时重复触发，除非有人再次
 发送这个命令评论。
 如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
 没有模型 key 时，CLI 会按现有规则回退到确定性的 mock 输出。

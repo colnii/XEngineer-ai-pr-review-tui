@@ -25,6 +25,7 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     assert "comment-mode: review" in workflow
     assert "review-action: approve" in workflow
     assert "language: en" in workflow
+    assert "issues: read" in workflow
     assert "issues: write" not in workflow
     assert "pull-requests: write" in workflow
 
