@@ -1,4 +1,6 @@
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -134,7 +136,10 @@ def test_main_publishes_comment_only_with_explicit_confirmation(monkeypatch, cap
     assert pipeline.posts[0][2] == "conversation"
     assert pipeline.posts[0][3] == "comment"
     assert "Summary text" in pipeline.posts[0][1]
-    assert "Published PR comment:" in capsys.readouterr().out
+    assert (
+        "Published PR comment: https://github.com/owner/repo/pull/1#issuecomment-9"
+        in capsys.readouterr().out
+    )
 
 
 def test_main_publishes_pull_request_review_when_requested(monkeypatch, capsys) -> None:
@@ -159,7 +164,7 @@ def test_main_publishes_pull_request_review_when_requested(monkeypatch, capsys) 
     assert pipeline.posts[0][2] == "review"
     assert pipeline.posts[0][3] == "comment"
     output = capsys.readouterr().out
-    assert "Published PR review:" in output
+    assert "Published PR review: https://github.com/owner/repo/pull/1#pullrequestreview-9" in output
     assert "Published PR comment:" not in output
 
 
@@ -408,6 +413,22 @@ def test_main_init_action_writes_workflow(tmp_path, capsys) -> None:
     assert "uses: owner/xengineer@v1" in workflow
     assert "comment-mode: review" in workflow
     assert f"Wrote GitHub Actions workflow: {workflow_path}" in capsys.readouterr().out
+
+
+def test_main_init_action_does_not_load_dotenv(monkeypatch, tmp_path) -> None:
+    dotenv_loaded = False
+
+    @contextmanager
+    def fake_loaded_dotenv() -> Iterator[None]:
+        nonlocal dotenv_loaded
+        dotenv_loaded = True
+        yield None
+
+    monkeypatch.setattr(main_module, "loaded_dotenv", fake_loaded_dotenv)
+
+    main_module.main(["init-action", "--repo-path", str(tmp_path)])
+
+    assert dotenv_loaded is False
 
 
 def test_main_help_lists_init_action(capsys) -> None:

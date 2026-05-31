@@ -111,9 +111,7 @@ def write_review_output(markdown: str, output: str) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
-
-    with loaded_dotenv():
-        _run_main(argv)
+    _run_main(argv)
 
 
 def _run_main(argv: Sequence[str]) -> None:
@@ -186,17 +184,18 @@ def _run_main(argv: Sequence[str]) -> None:
             parser.error("--publish-comment requires --confirm-publish or --auto-publish")
         if args.judge_demo:
             parser.error("--publish-comment cannot be used with --judge-demo")
-        url = publish_review_comment(
-            build_pipeline(
-                use_mock_llm=args.mock_llm,
-                language=args.language,
-                judge_demo=False,
-            ),
-            args.pr_url,
-            args.language,
-            comment_mode=args.comment_mode,
-            review_action=args.review_action,
-        )
+        with loaded_dotenv():
+            url = publish_review_comment(
+                build_pipeline(
+                    use_mock_llm=args.mock_llm,
+                    language=args.language,
+                    judge_demo=False,
+                ),
+                args.pr_url,
+                args.language,
+                comment_mode=args.comment_mode,
+                review_action=args.review_action,
+            )
         published_label = "Published PR review" if args.comment_mode == "review" else "Published PR comment"
         print(f"{published_label}: {url}")
         return
@@ -205,29 +204,31 @@ def _run_main(argv: Sequence[str]) -> None:
         if not args.pr_url and not args.judge_demo:
             parser.error("--output requires --pr-url or --judge-demo")
         pr_url = args.pr_url or JUDGE_DEMO_URL
-        _, markdown = analyze_review_report(
+        with loaded_dotenv():
+            _, markdown = analyze_review_report(
+                build_pipeline(
+                    use_mock_llm=args.mock_llm,
+                    language=args.language,
+                    judge_demo=args.judge_demo,
+                ),
+                pr_url,
+                args.language,
+            )
+        write_review_output(markdown, args.output)
+        return
+
+    initial_pr_url = args.pr_url or (JUDGE_DEMO_URL if args.judge_demo else "")
+    with loaded_dotenv():
+        ReviewTUI(
             build_pipeline(
                 use_mock_llm=args.mock_llm,
                 language=args.language,
                 judge_demo=args.judge_demo,
             ),
-            pr_url,
-            args.language,
-        )
-        write_review_output(markdown, args.output)
-        return
-
-    initial_pr_url = args.pr_url or (JUDGE_DEMO_URL if args.judge_demo else "")
-    ReviewTUI(
-        build_pipeline(
-            use_mock_llm=args.mock_llm,
             language=args.language,
-            judge_demo=args.judge_demo,
-        ),
-        language=args.language,
-        initial_pr_url=initial_pr_url,
-        auto_analyze=args.judge_demo,
-    ).run()
+            initial_pr_url=initial_pr_url,
+            auto_analyze=args.judge_demo,
+        ).run()
 
 
 def _add_init_action_subcommand(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
