@@ -229,7 +229,7 @@ class TavilyWebSearchClient:
         if not self.api_key:
             raise ValueError("TAVILY_API_KEY is not configured.")
         response = self.client.post(
-            "https://api.tavily.com/search",
+            "https://api.tavily.com/v2/search",
             headers={"Authorization": f"Bearer {self.api_key}"},
             json={
                 "query": query,
