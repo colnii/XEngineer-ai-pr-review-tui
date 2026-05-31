@@ -9,8 +9,8 @@ def test_npm_package_exposes_npx_entrypoint() -> None:
     assert package_json["name"] == "xengineer-pr-review"
     assert package_json["bin"] == {"xengineer-pr-review": "./bin/xengineer-pr-review.js"}
     assert "pyproject.toml" in package_json["files"]
-    assert "src/xengineer_pr_review/*.py" in package_json["files"]
     assert "src/xengineer_pr_review/**/*.py" in package_json["files"]
+    assert "src/xengineer_pr_review/*.py" not in package_json["files"]
     assert "src/" not in package_json["files"]
     assert package_json["scripts"]["test:python"] == "python3 -m pytest"
     assert package_json["scripts"]["test:all"] == "npm test && python3 -m pytest"

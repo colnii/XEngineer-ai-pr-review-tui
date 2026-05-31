@@ -7,7 +7,6 @@
   },
   "files": [
     "bin/",
-    "src/xengineer_pr_review/*.py",
     "src/xengineer_pr_review/**/*.py",
     "pyproject.toml",
     "README.md",

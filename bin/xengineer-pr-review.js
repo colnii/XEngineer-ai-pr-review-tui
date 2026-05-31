@@ -2,6 +2,7 @@
 "use strict";
 
 const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -102,8 +103,47 @@ function markerContent(packageRoot, version, editable) {
   };
   if (editable) {
     marker.packageRoot = path.resolve(packageRoot);
+  } else {
+    marker.packageFingerprint = packageFingerprint(packageRoot);
   }
   return JSON.stringify(marker);
+}
+
+function packageFingerprint(packageRoot) {
+  const hash = crypto.createHash("sha256");
+  for (const filePath of packageFingerprintFiles(packageRoot)) {
+    hash.update(path.relative(packageRoot, filePath));
+    hash.update("\0");
+    hash.update(fs.readFileSync(filePath));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+function packageFingerprintFiles(packageRoot) {
+  const files = [];
+  for (const relativePath of ["package.json", "pyproject.toml"]) {
+    const filePath = path.join(packageRoot, relativePath);
+    if (fs.existsSync(filePath)) {
+      files.push(filePath);
+    }
+  }
+  collectPythonFiles(path.join(packageRoot, "src", "xengineer_pr_review"), files);
+  return files.sort();
+}
+
+function collectPythonFiles(directory, files) {
+  if (!fs.existsSync(directory)) {
+    return;
+  }
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      collectPythonFiles(entryPath, files);
+    } else if (entry.isFile() && entry.name.endsWith(".py")) {
+      files.push(entryPath);
+    }
+  }
 }
 
 function spawnChecked(command, args, label, options) {
@@ -174,6 +214,7 @@ function ensureVenv(options = {}) {
   const python = findPython({ env, spawnSync });
   fs.mkdirSync(path.dirname(venvDir), { recursive: true });
   if (!fs.existsSync(pythonPath)) {
+    stderr.write("Creating XEngineer Python environment...\n");
     spawnChecked(python, ["-m", "venv", venvDir], "create Python virtual environment", {
       env,
       spawnSync,
@@ -181,12 +222,13 @@ function ensureVenv(options = {}) {
     });
   }
 
-  const pipArgs = ["-m", "pip", "install"];
+  const pipArgs = ["-m", "pip", "install", "--require-virtualenv"];
   if (editable) {
     pipArgs.push("-e", packageRoot);
   } else {
     pipArgs.push("--upgrade", packageRoot);
   }
+  stderr.write("Installing XEngineer Python dependencies...\n");
   spawnChecked(pythonPath, pipArgs, "install XEngineer Python package", {
     env,
     spawnSync,

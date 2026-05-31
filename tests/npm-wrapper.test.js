@@ -6,12 +6,15 @@ const test = require("node:test");
 
 const wrapper = require("../bin/xengineer-pr-review.js");
 
-function makePackageRoot({ editable = true } = {}) {
+function makePackageRoot({ editable = true, sourceContent = "" } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "xengineer-wrapper-"));
   fs.writeFileSync(
     path.join(root, "package.json"),
     JSON.stringify({ name: "xengineer-pr-review", version: "9.8.7" }),
   );
+  const sourceDir = path.join(root, "src", "xengineer_pr_review");
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, "__init__.py"), sourceContent);
   if (editable) {
     fs.writeFileSync(path.join(root, ".git"), "gitdir: /tmp/example\n");
   }
@@ -81,7 +84,14 @@ test("ensureVenv creates a cached venv and installs local source editably", () =
   assert.deepEqual(calls[0], ["python3.12", ["--version"]]);
   assert.equal(calls[1][1][0], "-m");
   assert.equal(calls[1][1][1], "venv");
-  assert.deepEqual(calls[2][1], ["-m", "pip", "install", "-e", packageRoot]);
+  assert.deepEqual(calls[2][1], [
+    "-m",
+    "pip",
+    "install",
+    "--require-virtualenv",
+    "-e",
+    packageRoot,
+  ]);
 });
 
 test("run forwards user arguments to the Python module inside the cached venv", () => {
@@ -190,7 +200,8 @@ test("ensureVenv sends setup command output to stderr instead of inherited stdou
   assert(setupOptions.every((options) => options.encoding === "utf8"));
   assert.equal(
     stderrChunks.join(""),
-    "setup stdout\nsetup stderr\nsetup stdout\nsetup stderr\n",
+    "Creating XEngineer Python environment...\nsetup stdout\nsetup stderr\n"
+      + "Installing XEngineer Python dependencies...\nsetup stdout\nsetup stderr\n",
   );
 });
 
@@ -236,7 +247,11 @@ test("ensureVenv repairs a cached venv when the installed package is not importa
   assert.equal(secondPython, firstPython);
   assert(calls.some(([, args]) => args.join(" ") === "-c import xengineer_pr_review"));
   assert(calls.some(([, args]) => args.join(" ") === "-m venv " + path.dirname(path.dirname(firstPython))));
-  assert(calls.some(([, args]) => args.join(" ") === "-m pip install -e " + packageRoot));
+  assert(
+    calls.some(
+      ([, args]) => args.join(" ") === "-m pip install --require-virtualenv -e " + packageRoot,
+    ),
+  );
 });
 
 test("ensureVenv includes termination signal details in setup failures", () => {
@@ -263,5 +278,46 @@ test("ensureVenv includes termination signal details in setup failures", () => {
         spawnSync,
       }),
     /SIGTERM/,
+  );
+});
+
+test("ensureVenv reinstalls a published package when source content changes at the same version", () => {
+  const firstPackageRoot = makePackageRoot({ editable: false, sourceContent: "one\n" });
+  const secondPackageRoot = makePackageRoot({ editable: false, sourceContent: "two\n" });
+  const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "xengineer-cache-"));
+  const calls = [];
+  const spawnSync = (command, args) => {
+    calls.push([command, args]);
+    if (args[0] === "--version") {
+      return { status: 0, stdout: "Python 3.12.3\n", stderr: "" };
+    }
+    if (args[0] === "-c" && args[1] === "import xengineer_pr_review") {
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    if (args[0] === "-m" && args[1] === "venv") {
+      const pythonPath = wrapper.venvPythonPath(args[2], process.platform);
+      fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+      fs.writeFileSync(pythonPath, "");
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  wrapper.ensureVenv({
+    env: { XENGINEER_CACHE_DIR: cacheRoot },
+    packageRoot: firstPackageRoot,
+    spawnSync,
+  });
+  calls.length = 0;
+  wrapper.ensureVenv({
+    env: { XENGINEER_CACHE_DIR: cacheRoot },
+    packageRoot: secondPackageRoot,
+    spawnSync,
+  });
+
+  assert(
+    calls.some(
+      ([, args]) =>
+        args.join(" ") === "-m pip install --require-virtualenv --upgrade " + secondPackageRoot,
+    ),
   );
 });
