@@ -78,16 +78,16 @@ xpr-review --language en
 For real model output:
 
 ```bash
-export OPENAI_API_KEY="..."
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY.
 xpr-review
 ```
 
 To use DeepSeek instead:
 
 ```bash
-export DEEPSEEK_API_KEY="..."
-# Optional: defaults to deepseek-v4-flash.
-export DEEPSEEK_MODEL="deepseek-v4-pro"
+# Edit .env and set DEEPSEEK_API_KEY.
+# Optional: DEEPSEEK_MODEL defaults to deepseek-v4-flash.
 xpr-review
 ```
 
@@ -101,7 +101,7 @@ survive export instead of staying only in the model transcript.
 Optional web search can be enabled with Tavily:
 
 ```bash
-export TAVILY_API_KEY="..."
+# Edit .env and set TAVILY_API_KEY.
 xpr-review
 ```
 
@@ -109,7 +109,7 @@ If GitHub anonymous API requests are rate limited, or you need to review a priva
 repository PR, provide a GitHub token:
 
 ```bash
-export GITHUB_TOKEN="$(gh auth token)"
+# Edit .env and set GITHUB_TOKEN, or keep using gh auth login.
 xpr-review --mock-llm
 ```
 
@@ -280,7 +280,10 @@ workflow and tool policies are implemented in this repository.
 The app uses DeepSeek when `DEEPSEEK_API_KEY` is present, otherwise it uses OpenAI when
 `OPENAI_API_KEY` is present. DeepSeek uses the OpenAI-compatible Chat Completions API with
 `https://api.deepseek.com` by default; override `DEEPSEEK_BASE_URL` only for a compatible
-gateway. `DEEPSEEK_MODEL` defaults to `deepseek-v4-flash`.
+gateway. `DEEPSEEK_MODEL` defaults to `deepseek-v4-flash`. The CLI loads the nearest
+project `.env` before building the review pipeline; values in `.env` override temporary shell
+exports for that command. Copy `.env.example` to `.env` for local credentials. The `.env`
+file is ignored by git and should not be committed.
 
 The app also supports `--mock-llm` for deterministic local review output. For judges,
 `--judge-demo` is the zero-configuration path and does not require model or GitHub credentials.

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from xengineer_pr_review.action_workflow import DEFAULT_ACTION_USES, init_action_workflow
+from xengineer_pr_review.env import loaded_dotenv
 from xengineer_pr_review.export import render_markdown
 from xengineer_pr_review.github import GitHubClient
 from xengineer_pr_review.judge_demo import JUDGE_DEMO_URL, JudgeDemoGitHubClient
@@ -111,6 +112,11 @@ def write_review_output(markdown: str, output: str) -> None:
 def main(argv: Sequence[str] | None = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
 
+    with loaded_dotenv():
+        _run_main(argv)
+
+
+def _run_main(argv: Sequence[str]) -> None:
     parser = argparse.ArgumentParser()
     init_action_parser = _add_init_action_subcommand(parser)
     parser.add_argument(

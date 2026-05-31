@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -200,6 +201,67 @@ def test_main_publishes_comment_with_auto_publish_for_automation(monkeypatch, ca
     assert pipeline.runs == [PR_URL]
     assert len(pipeline.posts) == 1
     assert "Published PR comment:" in capsys.readouterr().out
+
+
+def test_main_loads_dotenv_before_building_pipeline(monkeypatch, tmp_path, capsys) -> None:
+    pipeline = PublishingPipeline()
+    seen_env = {}
+
+    def fake_build_pipeline(**kwargs):
+        seen_env["DEEPSEEK_API_KEY"] = main_module.os.environ.get("DEEPSEEK_API_KEY")
+        seen_env["DEEPSEEK_MODEL"] = main_module.os.environ.get("DEEPSEEK_MODEL")
+        seen_env["OPENAI_API_KEY"] = main_module.os.environ.get("OPENAI_API_KEY")
+        return pipeline
+
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "DEEPSEEK_API_KEY=dotenv-deepseek",
+                'DEEPSEEK_MODEL="dotenv-model"',
+                "OPENAI_API_KEY=dotenv-openai",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "shell-deepseek")
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(main_module, "build_pipeline", fake_build_pipeline)
+
+    main_module.main(["--pr-url", PR_URL, "--output", "-"])
+
+    assert seen_env == {
+        "DEEPSEEK_API_KEY": "dotenv-deepseek",
+        "DEEPSEEK_MODEL": "dotenv-model",
+        "OPENAI_API_KEY": "dotenv-openai",
+    }
+    assert main_module.os.environ["DEEPSEEK_API_KEY"] == "shell-deepseek"
+    assert "DEEPSEEK_MODEL" not in main_module.os.environ
+    assert "OPENAI_API_KEY" not in main_module.os.environ
+    assert "# AI PR 审查报告" in capsys.readouterr().out
+
+
+def test_env_example_documents_runtime_configuration() -> None:
+    env_example = Path(__file__).resolve().parents[1] / ".env.example"
+
+    content = env_example.read_text(encoding="utf-8")
+
+    for key in (
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_BASE_URL",
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+        "TAVILY_API_KEY",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "XENGINEER_MAX_TOOL_ROUNDS",
+        "XENGINEER_RUN_LIVE_AI_REVIEW_TEST",
+        "XENGINEER_LIVE_AI_REVIEW_PR_URL",
+        "XENGINEER_LIVE_AI_REVIEW_REPORT_PATH",
+    ):
+        assert f"{key}=" in content
 
 
 def test_main_writes_report_to_output_path(monkeypatch, tmp_path, capsys) -> None:
