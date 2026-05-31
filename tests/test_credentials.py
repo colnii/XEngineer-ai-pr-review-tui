@@ -7,7 +7,8 @@ from xengineer_pr_review.credentials import (
 )
 
 
-def test_credential_status_requires_deepseek_or_openai(monkeypatch) -> None:
+def test_credential_status_requires_deepseek_or_openai(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
     for key in (
         "DEEPSEEK_API_KEY",
         "OPENAI_API_KEY",
@@ -29,7 +30,8 @@ def test_credential_status_requires_deepseek_or_openai(monkeypatch) -> None:
     assert status.has_model_key is False
 
 
-def test_credential_status_accepts_either_model_key(monkeypatch) -> None:
+def test_credential_status_accepts_either_model_key(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-key")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
