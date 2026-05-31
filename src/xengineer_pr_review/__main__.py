@@ -27,6 +27,16 @@ from xengineer_pr_review.pipeline import CommentMode, ReviewPipeline
 from xengineer_pr_review.tui import ReviewTUI
 
 
+MODEL_CONFIG_ERROR = (
+    "Real model review requires DEEPSEEK_API_KEY or OPENAI_API_KEY. "
+    "Use --judge-demo for zero-config evaluation."
+)
+
+
+class MissingModelConfigurationError(RuntimeError):
+    pass
+
+
 def build_pipeline(
     use_mock_llm: bool = False,
     language: str = "zh",
@@ -56,7 +66,7 @@ def build_pipeline(
             max_tool_rounds=_max_tool_rounds_from_env(),
         )
     else:
-        llm = MockLLMClient(language=language)
+        raise MissingModelConfigurationError(MODEL_CONFIG_ERROR)
     return ReviewPipeline(github=GitHubClient(), llm=llm)
 
 
@@ -109,6 +119,13 @@ def write_review_output(markdown: str, output: str) -> None:
     print(f"Wrote review report: {output_path}")
 
 
+def _build_pipeline_or_error(parser: argparse.ArgumentParser, **kwargs) -> ReviewPipeline:
+    try:
+        return build_pipeline(**kwargs)
+    except MissingModelConfigurationError as exc:
+        parser.error(str(exc))
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     argv = list(argv) if argv is not None else sys.argv[1:]
     _run_main(argv)
@@ -122,7 +139,7 @@ def _run_main(argv: Sequence[str]) -> None:
         action="store_true",
         help="Run a zero-config built-in demo for judges; no API keys or network required",
     )
-    parser.add_argument("--mock-llm", action="store_true", help="Use deterministic mock LLM output")
+    parser.add_argument("--mock-llm", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--pr-url", help="Prefill or publish a specific GitHub PR URL")
     parser.add_argument(
         "--output",
@@ -186,7 +203,8 @@ def _run_main(argv: Sequence[str]) -> None:
             parser.error("--publish-comment cannot be used with --judge-demo")
         with loaded_dotenv():
             url = publish_review_comment(
-                build_pipeline(
+                _build_pipeline_or_error(
+                    parser,
                     use_mock_llm=args.mock_llm,
                     language=args.language,
                     judge_demo=False,
@@ -206,7 +224,8 @@ def _run_main(argv: Sequence[str]) -> None:
         pr_url = args.pr_url or JUDGE_DEMO_URL
         with loaded_dotenv():
             _, markdown = analyze_review_report(
-                build_pipeline(
+                _build_pipeline_or_error(
+                    parser,
                     use_mock_llm=args.mock_llm,
                     language=args.language,
                     judge_demo=args.judge_demo,
@@ -220,7 +239,8 @@ def _run_main(argv: Sequence[str]) -> None:
     initial_pr_url = args.pr_url or (JUDGE_DEMO_URL if args.judge_demo else "")
     with loaded_dotenv():
         ReviewTUI(
-            build_pipeline(
+            _build_pipeline_or_error(
+                parser,
                 use_mock_llm=args.mock_llm,
                 language=args.language,
                 judge_demo=args.judge_demo,
