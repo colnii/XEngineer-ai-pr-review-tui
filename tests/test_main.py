@@ -154,7 +154,9 @@ def test_main_publishes_pull_request_review_when_requested(monkeypatch, capsys) 
     assert len(pipeline.posts) == 1
     assert pipeline.posts[0][0] == PR_URL
     assert pipeline.posts[0][2] == "review"
-    assert "Published PR comment:" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Published PR review:" in output
+    assert "Published PR comment:" not in output
 
 
 def test_main_publishes_comment_with_auto_publish_for_automation(monkeypatch, capsys) -> None:

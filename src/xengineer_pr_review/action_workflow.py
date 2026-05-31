@@ -18,6 +18,8 @@ def render_action_workflow(
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -26,12 +28,20 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: ${{{{ !github.event.pull_request.draft }}}}
+    if: >-
+      ${{{{
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          contains(github.event.comment.body, '/xengineer review')
+        )
+      }}}}
     steps:
       - name: Run XEngineer PR review
         uses: {action_uses}
         with:
-          pr-url: ${{{{ github.event.pull_request.html_url }}}}
+          pr-url: ${{{{ github.event.pull_request.html_url || format('https://github.com/{{0}}/pull/{{1}}', github.repository, github.event.issue.number) }}}}
           github-token: ${{{{ github.token }}}}
           comment-mode: {comment_mode}
           language: {language}

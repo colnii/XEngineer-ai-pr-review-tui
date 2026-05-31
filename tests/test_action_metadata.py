@@ -15,6 +15,8 @@ def test_action_metadata_runs_xpr_review_publish_comment() -> None:
     assert "--auto-publish" in metadata
     assert "--confirm-publish" not in metadata
     assert "github.event.pull_request.html_url" in metadata
+    assert "github.event.issue.number" in metadata
+    assert "https://github.com/{0}/pull/{1}" in metadata
     assert "inputs.github-token || github.token" in metadata
     assert "GITHUB_TOKEN: ${{ inputs.github-token || github.token }}" in metadata
     assert "XENGINEER_GITHUB_TOKEN" not in metadata

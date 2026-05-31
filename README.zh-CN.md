@@ -36,11 +36,12 @@ xpr-review
 - TUI 作为主要入口。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
+- 会把 PR Conversation 评论、review 正文、行内 review comment 和 commit message 纳入审查上下文。
 - 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
 - 支持 Markdown 报告导出。
 - 支持人工确认后发布 PR 顶层 Conversation 评论，也可选择发布为 PR review 正文。
-- 支持作为 GitHub Action 集成到其他仓库，在 PR 创建、重新打开或标记 ready for review
-  后自动发布一条 PR 评论。
+- 支持作为 GitHub Action 集成到其他仓库，在 PR 创建、重新打开、标记 ready for review，
+  或有人在 PR 页面评论 `/xengineer review` 后发布一条 PR 评论。
 - 默认中文界面，可切换英文。
 
 ## 使用方式
@@ -138,6 +139,8 @@ name: XEngineer PR Review
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -146,12 +149,20 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          contains(github.event.comment.body, '/xengineer review')
+        )
+      }}
     steps:
       - name: Run XEngineer PR review
         uses: colnii/XEngineer-ai-pr-review-tui@v1
         with:
-          pr-url: ${{ github.event.pull_request.html_url }}
+          pr-url: ${{ github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number) }}
           github-token: ${{ github.token }}
           comment-mode: conversation
           language: zh
@@ -160,9 +171,10 @@ jobs:
           tavily-api-key: ${{ secrets.TAVILY_API_KEY }}
 ```
 
-默认 workflow 只在 PR 创建、重新打开、从 draft 变成 ready for review 时发一条新的
-PR Conversation 评论；如需发布为 PR review 正文，设置 `comment-mode: review`。它不会编辑旧评论，
-也不会在每次 push 新 commit 时重复触发。
+默认 workflow 会在 PR 创建、重新打开、从 draft 变成 ready for review，或有人在 PR 页面评论
+`/xengineer review` 时发一条新的 PR Conversation 评论；如需发布为 PR review 正文，设置
+`comment-mode: review`。它不会编辑旧评论，也不会在每次 push 新 commit 时重复触发，除非有人再次
+发送这个命令评论。
 如需真实模型输出，请在目标仓库配置 `DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY` secret；
 没有模型 key 时，CLI 会按现有规则回退到确定性的 mock 输出。
 
@@ -248,9 +260,10 @@ xpr-review --language en
 
 ## 上下文策略
 
-应用会把 PR 元数据、规则风险信号和 diff 片段发送给模型。适合审查的文件不再按数量裁剪。
-prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 仍会裁剪。
-被跳过的文件会在最终报告中列出。
+应用会把 PR 元数据、规则风险信号和 diff 片段发送给模型，也会纳入 PR Conversation 评论、
+review 正文、行内 review comment 和 commit message 等历史/当前 PR 活动。适合审查的文件不再按数量裁剪。
+prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 和过长 PR
+活动正文仍会裁剪。被跳过的文件会在最终报告中列出。
 
 diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 ID（例如 `F1`），模型可以调用
 `read_file(file_id="F1")`，不需要复制很长的仓库路径。`read_file` 和 `grep_code` 会返回带行号的

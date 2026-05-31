@@ -27,6 +27,17 @@ def test_render_action_workflow_uses_opened_pr_events_without_synchronize() -> N
     assert "pull-requests: write" in workflow
 
 
+def test_render_action_workflow_supports_manual_pr_comment_command() -> None:
+    workflow = render_action_workflow(action_uses="owner/xengineer@v1", language="en")
+
+    assert "issue_comment:" in workflow
+    assert "types: [created]" in workflow
+    assert "github.event_name == 'issue_comment'" in workflow
+    assert "github.event.issue.pull_request" in workflow
+    assert "contains(github.event.comment.body, '/xengineer review')" in workflow
+    assert "format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number)" in workflow
+
+
 def test_default_action_reference_uses_stable_major_version() -> None:
     assert DEFAULT_ACTION_USES == "colnii/XEngineer-ai-pr-review-tui@v1"
 

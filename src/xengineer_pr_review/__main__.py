@@ -174,7 +174,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             args.language,
             comment_mode=args.comment_mode,
         )
-        print(f"Published PR comment: {url}")
+        published_label = "Published PR review" if args.comment_mode == "review" else "Published PR comment"
+        print(f"{published_label}: {url}")
         return
 
     if args.output is not None:

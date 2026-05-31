@@ -118,6 +118,26 @@ def test_fetch_pr_uses_authenticated_pull_api_for_diff(monkeypatch) -> None:
             "application/vnd.github.diff",
             "Bearer private-token",
         ),
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
+        (
+            "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100",
+            "*/*",
+            "Bearer private-token",
+        ),
     ]
 
 
@@ -140,7 +160,84 @@ def test_fetch_pr_allows_public_pr_without_token(monkeypatch) -> None:
     pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
 
     assert pr.title == "Demo PR"
-    assert authorizations == [None, None]
+    assert authorizations == [None, None, None, None, None, None]
+
+
+def test_fetch_pr_includes_pull_request_activity(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "read-token")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "user": {"login": "reviewer"},
+                        "body": "Please rerun after the latest commit.",
+                        "created_at": "2026-05-30T10:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#issuecomment-1",
+                    }
+                ],
+            )
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "user": {"login": "maintainer"},
+                        "body": "Looks close, but tests are missing.",
+                        "state": "COMMENTED",
+                        "submitted_at": "2026-05-30T11:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#pullrequestreview-1",
+                    }
+                ],
+            )
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "user": {"login": "maintainer"},
+                        "body": "This branch misses the manual trigger path.",
+                        "path": "action.yml",
+                        "line": 57,
+                        "created_at": "2026-05-30T12:00:00Z",
+                        "html_url": "https://github.com/owner/repo/pull/1#discussion_r1",
+                    }
+                ],
+            )
+        if url == "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": "abcdef1234567890",
+                        "commit": {
+                            "message": "feat: add action trigger",
+                            "author": {"name": "Alice", "date": "2026-05-30T09:00:00Z"},
+                        },
+                        "html_url": "https://github.com/owner/repo/commit/abcdef1",
+                    }
+                ],
+            )
+        return _pull_api_response(request)
+
+    client = GitHubClient(transport=httpx.MockTransport(handler))
+
+    pr = client.fetch_pr(PullRequestRef("owner", "repo", 1))
+
+    assert [(activity.kind, activity.author) for activity in pr.activities] == [
+        ("commit", "Alice"),
+        ("conversation", "reviewer"),
+        ("review", "maintainer"),
+        ("inline", "maintainer"),
+    ]
+    assert pr.activities[0].commit_sha == "abcdef1"
+    assert pr.activities[1].body == "Please rerun after the latest commit."
+    assert pr.activities[2].state == "COMMENTED"
+    assert pr.activities[3].path == "action.yml"
+    assert pr.activities[3].line == 57
 
 
 def test_post_pr_comment_posts_markdown_to_issue_comments(monkeypatch) -> None:
@@ -358,6 +455,14 @@ def test_fetch_tree_paths_rejects_truncated_recursive_tree(monkeypatch) -> None:
 
 
 def _pull_api_response(request: httpx.Request) -> httpx.Response:
+    activity_urls = {
+        "https://api.github.com/repos/owner/repo/pulls/1/commits?per_page=100",
+        "https://api.github.com/repos/owner/repo/issues/1/comments?per_page=100",
+        "https://api.github.com/repos/owner/repo/pulls/1/reviews?per_page=100",
+        "https://api.github.com/repos/owner/repo/pulls/1/comments?per_page=100",
+    }
+    if str(request.url) in activity_urls:
+        return httpx.Response(200, json=[])
     if str(request.url) != PULL_API_URL:
         return httpx.Response(404)
     if request.headers.get("accept") == "application/vnd.github.diff":

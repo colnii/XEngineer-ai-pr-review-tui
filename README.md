@@ -39,12 +39,14 @@ the `socksio` dependency is installed.
 - TUI entry point.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
+- PR conversation comments, review bodies, inline review comments, and commit messages
+  are included as review context.
 - Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
 - Markdown export.
 - Manual PR conversation comment publishing after human confirmation, with an optional
   pull request review body mode.
 - GitHub Action integration that publishes one PR comment when a PR is opened, reopened,
-  or marked ready for review.
+  marked ready for review, or manually requested with `/xengineer review` on the PR page.
 
 ## Usage
 
@@ -150,6 +152,8 @@ name: XEngineer PR Review
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -158,12 +162,20 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
-    if: ${{ !github.event.pull_request.draft }}
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' && !github.event.pull_request.draft) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request != null &&
+          contains(github.event.comment.body, '/xengineer review')
+        )
+      }}
     steps:
       - name: Run XEngineer PR review
         uses: colnii/XEngineer-ai-pr-review-tui@v1
         with:
-          pr-url: ${{ github.event.pull_request.html_url }}
+          pr-url: ${{ github.event.pull_request.html_url || format('https://github.com/{0}/pull/{1}', github.repository, github.event.issue.number) }}
           github-token: ${{ github.token }}
           comment-mode: conversation
           language: en
@@ -173,9 +185,10 @@ jobs:
 ```
 
 The default workflow publishes one new PR conversation comment after the PR is
-opened, reopened, or moved out of draft. Set `comment-mode: review` to publish
-the report as a pull request review body instead. It does not edit older bot comments and
-does not run on every pushed commit. Configure `DEEPSEEK_API_KEY` or
+opened, reopened, moved out of draft, or after someone comments `/xengineer review`
+on the PR page. Set `comment-mode: review` to publish the report as a pull request
+review body instead. It does not edit older bot comments and does not run on every
+pushed commit unless that command comment is added. Configure `DEEPSEEK_API_KEY` or
 `OPENAI_API_KEY` as a repository secret for real model output; without a model
 key, the CLI falls back to deterministic mock output.
 
@@ -255,9 +268,11 @@ The app also supports `--mock-llm` for deterministic local review output. For ju
 ## Context Strategy
 
 The app sends PR metadata, deterministic rule findings, and diff snippets to the model.
-Review-relevant files are no longer trimmed by count. The prompt skips obvious low-signal files
-such as lockfiles, generated bundles, binary assets, and archives; long hunks are still trimmed.
-Skipped files are listed in the final report.
+It also includes current and historical PR activity from conversation comments, review bodies,
+inline review comments, and commit messages. Review-relevant files are no longer trimmed by count.
+The prompt skips obvious low-signal files such as lockfiles, generated bundles, binary assets,
+and archives; long hunks and very long PR activity bodies are still trimmed. Skipped files are
+listed in the final report.
 
 Diff hunks are indexed with changed line ranges. Changed files also get short IDs such as `F1`,
 so the model can call `read_file(file_id="F1")` instead of copying long repository paths.

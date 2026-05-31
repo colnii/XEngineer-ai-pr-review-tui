@@ -64,6 +64,7 @@ class ReviewPipeline:
             files=files,
             diff_text=pr.diff_text,
             head_sha=pr.head_sha,
+            activities=pr.activities,
         )
 
         findings = analyze_rules(files)
@@ -116,6 +117,8 @@ class ReviewPipeline:
             return self.github.post_pr_comment(ref, body)
         if comment_mode == "review" and _github_supports_pr_reviews(self.github):
             return self.github.post_pr_review(ref, body)
+        if comment_mode == "review":
+            raise ValueError("GitHub client does not support pull request review comments.")
         raise ValueError(f"Unsupported PR comment mode: {comment_mode}")
 
     def _analyze_with_optional_tools(

@@ -11,6 +11,7 @@ FindingSource = Literal["rule", "ai"]
 SuggestionType = Literal["comment", "test", "maintainability", "edge-case"]
 Confidence = Literal["high", "medium", "low"]
 EvidenceKind = Literal["code", "web"]
+PullRequestActivityKind = Literal["commit", "conversation", "review", "inline"]
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,19 @@ class ChangedFile:
 
 
 @dataclass(frozen=True)
+class PullRequestActivity:
+    kind: PullRequestActivityKind
+    author: str = ""
+    body: str = ""
+    created_at: str = ""
+    url: str = ""
+    state: str = ""
+    path: str = ""
+    line: int | None = None
+    commit_sha: str = ""
+
+
+@dataclass(frozen=True)
 class PullRequestData:
     ref: PullRequestRef
     title: str
@@ -39,6 +53,7 @@ class PullRequestData:
     files: tuple[ChangedFile, ...]
     diff_text: str
     head_sha: str = ""
+    activities: tuple[PullRequestActivity, ...] = ()
 
 
 @dataclass(frozen=True)
