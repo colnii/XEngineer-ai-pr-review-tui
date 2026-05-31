@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from textual.widgets import Input
+from textual.widgets import Input, Static
 
 from xengineer_pr_review.credentials import CredentialStatus
 from xengineer_pr_review.llm import MockLLMClient
@@ -160,6 +160,36 @@ async def test_tui_analyze_without_saved_model_key_does_not_crash() -> None:
 
     assert app.pipeline is None
     assert app.credentials_required is True
+
+
+@pytest.mark.anyio
+async def test_tui_keeps_saved_credential_message_when_switching_language(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    for key in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    app = ReviewTUI(
+        None,
+        pipeline_factory=lambda: ReviewPipeline(llm=MockLLMClient()),
+        credential_status=CredentialStatus(
+            has_deepseek_api_key=False,
+            has_openai_api_key=False,
+            has_tavily_api_key=False,
+            has_github_token=False,
+            dotenv_path=None,
+        ),
+        credential_writer=lambda values: tmp_path / ".env",
+    )
+
+    async with app.run_test():
+        app.query_one("#setup-model-key", Input).value = "deepseek-key"
+        app._save_credentials("deepseek")
+        saved_message = app.query_one("#setup-text", Static).content
+
+        app._set_language("en")
+
+        assert app.query_one("#setup-text", Static).content == saved_message
 
 
 def test_tui_can_switch_language_and_rerender_current_report(monkeypatch) -> None:

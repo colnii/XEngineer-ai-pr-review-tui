@@ -39,6 +39,7 @@ class ReviewTUI(App):
     #setup-tavily-key { width: 1fr; margin-right: 1; }
     #setup-github-token { width: 1fr; margin-right: 1; }
     #setup-save-deepseek { margin-right: 1; }
+    #setup-save-openai { margin-right: 1; }
     #pr-url { width: 1fr; margin-right: 1; }
     #analyze { margin-right: 1; }
     #main { height: 1fr; }
@@ -70,6 +71,7 @@ class ReviewTUI(App):
         self.last_markdown: str | None = None
         self.last_report: ReviewReport | None = None
         self.publish_confirmation_pending = False
+        self.setup_status_text: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -221,10 +223,11 @@ class ReviewTUI(App):
             self._update_status(f"{label('status.credentials_save_failed', self.language)}: {exc}")
             return
 
-        self._update_setup_text(
+        self.setup_status_text = (
             f"{label('status.credentials_saved', self.language)}: {env_path}\n"
             f"{provider_key} configured."
         )
+        self._update_setup_text(self.setup_status_text)
         self._update_status(label("status.ready", self.language))
 
     def _input_value(self, selector: str) -> str:
@@ -302,7 +305,10 @@ class ReviewTUI(App):
             self._render_report(self.last_report)
 
     def _update_static_language(self) -> None:
-        self._update_setup_text(self._setup_text())
+        if self.credentials_required:
+            self._update_setup_text(self._setup_text())
+        elif self.setup_status_text:
+            self._update_setup_text(self.setup_status_text)
         self.query_one("#pr-url", Input).placeholder = label("input.pr_url", self.language)
         try:
             self.query_one("#setup-model-key", Input).placeholder = label(
