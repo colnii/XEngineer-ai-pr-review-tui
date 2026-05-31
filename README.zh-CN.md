@@ -49,7 +49,8 @@ xpr-review
 - npm/npx wrapper 隐藏手动 virtualenv 配置，普通用户可一条命令启动。
 - 基于规则识别稳定风险信号。
 - 使用 LLM 生成摘要和审查建议。
-- 会把 PR Conversation 评论、review 正文、行内 review comment 和 commit message 纳入审查上下文。
+- 会把 PR Conversation 评论、review 正文、行内 review comment、timeline 事件和 commit message
+  纳入审查上下文。
 - 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
 - 支持 Markdown 报告导出。
 - 支持人工确认后发布 PR 顶层 Conversation 评论，也可选择发布为 PR review 正文。
@@ -286,19 +287,22 @@ DeepSeek 或 OpenAI key；没有模型 key 时不会生成审查结果。
 ## 上下文策略
 
 应用会把 PR 元数据、规则风险信号和 diff 片段发送给模型，也会纳入 PR Conversation 评论、
-review 正文、行内 review comment 和 commit message 等历史/当前 PR 活动。适合审查的文件不再按数量裁剪。
-prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、二进制资源和压缩包；过长 hunk 和过长 PR
-活动正文仍会裁剪。被跳过的文件会在最终报告中列出。
+review 正文、行内 review comment、timeline 事件和 commit message 等历史/当前 PR 活动。
+适合审查的文件不再按数量裁剪。prompt 会跳过明显低信号文件，例如 lockfile、生成 bundle、
+二进制资源和压缩包；过长 hunk 和过长 PR 活动正文仍会裁剪。被跳过的文件会在最终报告中列出。
 
 diff hunk 会被索引为变更后的行号范围。变更文件也会获得短 ID（例如 `F1`），模型可以调用
 `read_file(file_id="F1")`，不需要复制很长的仓库路径。`read_file` 和 `grep_code` 会返回带行号的
-代码上下文；`web_search` 会返回稳定 ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词
-要求把这些引用写进风险或建议的 `evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
+代码上下文；`read_pr_activity` 可按类型重新读取已抓取的 PR 讨论/历史；`web_search` 会返回稳定
+ID（例如 `[W1]`）、URL 和 snippet（摘要片段）。模型提示词要求把这些引用写进风险或建议的
+`evidence` 对象；TUI 和 Markdown 导出会在对应审查项下展示这些证据。
 
 配置真实模型后，LangGraph agent 可以按需请求更多上下文：
 
 - `read_file`：读取 PR head commit 上的仓库相对路径文件。
 - `grep_code`：在 PR head commit 的审查相关文件中搜索代码。
+- `read_pr_activity`：读取已抓取的 PR 评论、review、行内评论、timeline 事件和 commit，
+  可按类型过滤。
 - `web_search`：仅在配置 `TAVILY_API_KEY` 后搜索公开网页上下文。
 
 ## 限制

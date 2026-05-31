@@ -51,8 +51,8 @@ developer mode so the `socksio` dependency is installed.
 - npm/npx wrapper that hides virtualenv setup for normal users.
 - Rule-based risk findings.
 - LLM-assisted summary and suggestions.
-- PR conversation comments, review bodies, inline review comments, and commit messages
-  are included as review context.
+- PR conversation comments, review bodies, inline review comments, timeline events,
+  and commit messages are included as review context.
 - Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
 - Markdown export.
 - Manual PR conversation comment publishing after human confirmation, with an optional
@@ -298,22 +298,25 @@ key, the app does not generate a review.
 
 The app sends PR metadata, deterministic rule findings, and diff snippets to the model.
 It also includes current and historical PR activity from conversation comments, review bodies,
-inline review comments, and commit messages. Review-relevant files are no longer trimmed by count.
-The prompt skips obvious low-signal files such as lockfiles, generated bundles, binary assets,
-and archives; long hunks and very long PR activity bodies are still trimmed. Skipped files are
-listed in the final report.
+inline review comments, timeline events, and commit messages. Review-relevant files are no longer
+trimmed by count. The prompt skips obvious low-signal files such as lockfiles, generated bundles,
+binary assets, and archives; long hunks and very long PR activity bodies are still trimmed.
+Skipped files are listed in the final report.
 
 Diff hunks are indexed with changed line ranges. Changed files also get short IDs such as `F1`,
 so the model can call `read_file(file_id="F1")` instead of copying long repository paths.
-`read_file` and `grep_code` return line-numbered code context, and `web_search` returns stable IDs
-such as `[W1]` with the result URL and snippet. The model is prompted to copy those references into
-`evidence` objects on risks or suggestions; the TUI and Markdown export render that evidence under
-the corresponding review item.
+`read_file` and `grep_code` return line-numbered code context, `read_pr_activity` lets the model
+re-open fetched PR discussion/history by type, and `web_search` returns stable IDs such as `[W1]`
+with the result URL and snippet. The model is prompted to copy those references into `evidence`
+objects on risks or suggestions; the TUI and Markdown export render that evidence under the
+corresponding review item.
 
 When a real model is configured, the LangGraph agent can request extra context with:
 
 - `read_file`: read a repository-relative file from the PR head commit.
 - `grep_code`: search review-relevant repository files at the PR head commit.
+- `read_pr_activity`: read fetched PR comments, reviews, inline comments, timeline events,
+  and commits, optionally filtered by kind.
 - `web_search`: search public web context only when `TAVILY_API_KEY` is configured.
 
 ## Limitations

@@ -186,6 +186,18 @@ class ToolAwareLLMClient:
         return LLMResult(summary="AI summary with tools")
 
 
+class ActivityToolAwareLLMClient:
+    supports_review_tools = True
+
+    def __init__(self) -> None:
+        self.activity_output = ""
+
+    def analyze(self, prompt: str, toolbox=None) -> LLMResult:
+        assert toolbox is not None
+        self.activity_output = toolbox.read_pr_activity(kind="conversation", max_items=5)
+        return LLMResult(summary="AI summary with PR activity tool")
+
+
 class FileIdToolAwareLLMClient:
     supports_review_tools = True
 
@@ -343,6 +355,17 @@ def test_pipeline_passes_review_toolbox_to_tool_aware_llm() -> None:
     assert report.summary == "AI summary with tools"
     assert "File: src/auth.py" in llm.tool_output
     assert "1: token = 'x'" in llm.tool_output
+
+
+def test_pipeline_passes_pr_activity_to_review_toolbox() -> None:
+    llm = ActivityToolAwareLLMClient()
+    pipeline = ReviewPipeline(github=ActivityGitHubClient(), llm=llm)
+
+    report = pipeline.run("https://github.com/owner/repo/pull/1")
+
+    assert report.summary == "AI summary with PR activity tool"
+    assert "PR activity history (conversation" in llm.activity_output
+    assert "Please inspect the prior PR discussion before reviewing." in llm.activity_output
 
 
 def test_pipeline_exposes_file_ids_and_hydrates_file_id_evidence() -> None:

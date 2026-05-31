@@ -93,6 +93,13 @@ def test_context_includes_pull_request_activity_history() -> None:
                 path="action.yml",
                 line=57,
             ),
+            PullRequestActivity(
+                kind="event",
+                author="alice",
+                event="review_requested",
+                body="requested reviewer: bob",
+                created_at="2026-05-30T12:00:00Z",
+            ),
         ),
     )
 
@@ -103,3 +110,5 @@ def test_context_includes_pull_request_activity_history() -> None:
     assert "Please rerun the review from the PR page." in context.prompt
     assert "inline by maintainer on action.yml:57" in context.prompt
     assert "This needs an issue_comment trigger." in context.prompt
+    assert "event review_requested by alice at 2026-05-30T12:00:00Z" in context.prompt
+    assert "requested reviewer: bob" in context.prompt

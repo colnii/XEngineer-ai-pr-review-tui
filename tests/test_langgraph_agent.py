@@ -33,10 +33,10 @@ def test_langgraph_review_client_loops_until_model_returns_final_json() -> None:
     }
 
 
-def test_langgraph_review_client_defaults_to_twenty_tool_rounds() -> None:
+def test_langgraph_review_client_defaults_to_forty_tool_rounds() -> None:
     client = LangGraphReviewClient(model="test-model", chat_completions=FakeChatCompletions([]))
 
-    assert client.max_tool_rounds == 20
+    assert client.max_tool_rounds == 40
 
 
 def test_langgraph_review_client_reports_tool_round_limit() -> None:
@@ -132,6 +132,28 @@ def test_langgraph_review_client_dispatches_read_file_by_file_id() -> None:
     assert toolbox.calls == [("read_file", "", "F1", 3)]
 
 
+def test_langgraph_review_client_dispatches_pr_activity_tool() -> None:
+    completions = FakeChatCompletions(
+        [
+            _tool_call_message("call-1", "read_pr_activity", {"kind": "conversation", "max_items": 2}),
+            _assistant_message(
+                '{"summary": "Read PR activity.", "risks": [], "suggestions": []}'
+            ),
+        ]
+    )
+    toolbox = FakeToolbox()
+    client = LangGraphReviewClient(
+        model="test-model",
+        language="en",
+        chat_completions=completions,
+    )
+
+    result = client.analyze("PR title: demo", toolbox=toolbox)
+
+    assert result.summary == "Read PR activity."
+    assert toolbox.calls == [("read_pr_activity", "conversation", 2)]
+
+
 def test_langgraph_review_client_does_not_warn_on_file_content_with_error_word() -> None:
     completions = FakeChatCompletions(
         [
@@ -174,7 +196,7 @@ def test_langgraph_review_client_exposes_web_search_only_when_configured() -> No
     client.analyze("PR title: demo", toolbox=toolbox)
 
     tool_names = [tool["function"]["name"] for tool in completions.calls[0]["tools"]]
-    assert tool_names == ["read_file", "grep_code"]
+    assert tool_names == ["read_file", "grep_code", "read_pr_activity"]
     assert completions.calls[0]["tools"][0]["function"]["parameters"]["properties"]["max_lines"][
         "maximum"
     ] == 1000
@@ -251,6 +273,10 @@ class FakeToolbox:
     def web_search(self, query: str, max_results: int = 3) -> str:
         self.calls.append(("web_search", query, max_results))
         return "web_search unavailable"
+
+    def read_pr_activity(self, kind: str = "all", max_items: int = 100) -> str:
+        self.calls.append(("read_pr_activity", kind, max_items))
+        return "PR activity history"
 
 
 class FakeChatCompletions:

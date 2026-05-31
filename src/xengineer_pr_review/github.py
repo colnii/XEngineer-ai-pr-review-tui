@@ -23,9 +23,10 @@ from xengineer_pr_review.models import (
 
 MAX_FILE_CONTENT_BYTES = 1_000_000
 MAX_COMMENT_BODY_CHARS = 65_536
-MAX_PR_ACTIVITY_ITEMS_PER_KIND = 100
+MAX_PR_ACTIVITY_ITEMS_PER_KIND = 300
 COMMENT_TRUNCATION_NOTICE = "\n\n[Report truncated by XEngineer before publishing to GitHub.]"
 LOGGER = logging.getLogger(__name__)
+DUPLICATED_TIMELINE_EVENTS = {"commented", "committed", "line-commented", "reviewed"}
 
 
 class GitHubClient:
@@ -71,6 +72,7 @@ class GitHubClient:
             ("conversation comments", self._fetch_conversation_activities),
             ("reviews", self._fetch_review_activities),
             ("inline comments", self._fetch_inline_comment_activities),
+            ("timeline events", self._fetch_timeline_event_activities),
         )
         for activity_name, fetcher in activity_fetchers:
             try:
@@ -217,6 +219,26 @@ class GitHubClient:
             )
         return activities
 
+    def _fetch_timeline_event_activities(self, ref: PullRequestRef) -> list[PullRequestActivity]:
+        api_url = f"https://api.github.com/repos/{ref.owner}/{ref.repo}/issues/{ref.number}/timeline"
+        activities: list[PullRequestActivity] = []
+        for item in self._get_paginated_items(api_url):
+            event = str(item.get("event") or "")
+            if not event or event in DUPLICATED_TIMELINE_EVENTS:
+                continue
+            activities.append(
+                PullRequestActivity(
+                    kind="event",
+                    author=_actor_login(item),
+                    body=_timeline_event_body(item, event),
+                    created_at=str(item.get("created_at") or ""),
+                    url=_timeline_event_url(item),
+                    event=event,
+                    commit_sha=str(item.get("commit_id") or "")[:7],
+                )
+            )
+        return activities
+
     def _get_paginated_items(self, api_url: str) -> list[dict]:
         items: list[dict] = []
         next_url: str | None = api_url
@@ -279,8 +301,62 @@ def _user_login(payload: dict) -> str:
     return ""
 
 
+def _actor_login(payload: dict) -> str:
+    actor = payload.get("actor")
+    if isinstance(actor, dict):
+        return str(actor.get("login") or "")
+    return _user_login(payload)
+
+
 def _clean_body(value: object) -> str:
     return str(value or "").strip()
+
+
+def _timeline_event_body(payload: dict, event: str) -> str:
+    if event in {"assigned", "unassigned"}:
+        return _named_payload("assignee", payload.get("assignee"))
+    if event in {"labeled", "unlabeled"}:
+        return _named_payload("label", payload.get("label"))
+    if event in {"milestoned", "demilestoned"}:
+        return _named_payload("milestone", payload.get("milestone"))
+    if event in {"review_requested", "review_request_removed"}:
+        reviewer = payload.get("requested_reviewer") or payload.get("requested_team")
+        return _named_payload("requested reviewer", reviewer)
+    if event == "renamed":
+        rename = payload.get("rename")
+        if isinstance(rename, dict):
+            old_title = str(rename.get("from") or "")
+            new_title = str(rename.get("to") or "")
+            if old_title or new_title:
+                return f"{old_title} -> {new_title}".strip()
+    if event == "cross-referenced":
+        source = payload.get("source")
+        if isinstance(source, dict):
+            issue = source.get("issue")
+            if isinstance(issue, dict):
+                title = str(issue.get("title") or "").strip()
+                url = str(issue.get("html_url") or "").strip()
+                return " ".join(part for part in (title, url) if part)
+    return _clean_body(payload.get("body") or payload.get("commit_id") or event)
+
+
+def _named_payload(label: str, value: object) -> str:
+    if not isinstance(value, dict):
+        return ""
+    name = value.get("login") or value.get("name") or value.get("slug") or value.get("title")
+    return f"{label}: {name}" if name else ""
+
+
+def _timeline_event_url(payload: dict) -> str:
+    html_url = str(payload.get("html_url") or "")
+    if html_url:
+        return html_url
+    source = payload.get("source")
+    if isinstance(source, dict):
+        issue = source.get("issue")
+        if isinstance(issue, dict):
+            return str(issue.get("html_url") or "")
+    return ""
 
 
 def _bounded_comment_body(body: str) -> str:
