@@ -63,6 +63,15 @@ def test_release_check_runs_expected_commands(tmp_path: Path) -> None:
     ]
 
 
+def test_release_check_uses_npm_cmd_on_windows() -> None:
+    release_check = load_release_check()
+
+    commands = release_check.release_commands("python", platform="win32")
+
+    assert commands[0] == ("npm wrapper tests", ["npm.cmd", "test"])
+    assert commands[-1] == ("npm package dry run", ["npm.cmd", "pack", "--dry-run"])
+
+
 def test_release_check_prefers_project_virtualenv(tmp_path: Path, monkeypatch) -> None:
     release_check = load_release_check()
     monkeypatch.delenv("XENGINEER_RELEASE_PYTHON", raising=False)

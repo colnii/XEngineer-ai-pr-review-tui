@@ -37,13 +37,20 @@ def read_project_version(root: Path) -> str:
     return npm_version
 
 
-def release_commands(python: str) -> list[tuple[str, list[str]]]:
+def npm_command(platform: str = sys.platform) -> str:
+    if platform == "win32":
+        return "npm.cmd"
+    return "npm"
+
+
+def release_commands(python: str, *, platform: str = sys.platform) -> list[tuple[str, list[str]]]:
+    npm = npm_command(platform)
     return [
-        ("npm wrapper tests", ["npm", "test"]),
+        ("npm wrapper tests", [npm, "test"]),
         ("Python tests", [python, "-m", "pytest"]),
         ("ruff", [python, "-m", "ruff", "check", "src", "tests", "scripts"]),
         ("git whitespace check", ["git", "diff", "--check"]),
-        ("npm package dry run", ["npm", "pack", "--dry-run"]),
+        ("npm package dry run", [npm, "pack", "--dry-run"]),
     ]
 
 
