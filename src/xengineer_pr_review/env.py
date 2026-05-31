@@ -78,6 +78,7 @@ def _clean_dotenv_value(raw_value: str) -> str:
 
 
 def _strip_inline_comment(value: str) -> str:
+    # This scans for the comment boundary only; returned values keep their original backslashes.
     quote: str | None = None
     escaped = False
     for index, character in enumerate(value):
