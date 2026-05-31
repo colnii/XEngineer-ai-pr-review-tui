@@ -15,9 +15,20 @@ LABELS: dict[str, dict[Language, str]] = {
     "button.export": {"zh": "导出", "en": "Export"},
     "button.publish": {"zh": "发布评论", "en": "Publish Comment"},
     "button.confirm_publish": {"zh": "确认发布", "en": "Confirm Publish"},
+    "button.save_deepseek": {"zh": "保存 DeepSeek", "en": "Save DeepSeek"},
+    "button.save_openai": {"zh": "保存 OpenAI", "en": "Save OpenAI"},
     "input.pr_url": {
         "zh": "粘贴公开 PR，或已配置 token 的私有 PR 地址",
         "en": "Paste public PR, or private PR with configured token",
+    },
+    "input.model_key": {
+        "zh": "必填：粘贴 DeepSeek 或 OpenAI API Key",
+        "en": "Required: paste a DeepSeek or OpenAI API key",
+    },
+    "input.tavily_key": {"zh": "可选：TAVILY_API_KEY", "en": "Optional: TAVILY_API_KEY"},
+    "input.github_token": {
+        "zh": "可选：GITHUB_TOKEN（也可用 gh auth login）",
+        "en": "Optional: GITHUB_TOKEN (or use gh auth login)",
     },
     "status.ready": {"zh": "状态：就绪", "en": "Status: Ready"},
     "status.running": {"zh": "状态：运行中", "en": "Status: Running"},
@@ -42,6 +53,35 @@ LABELS: dict[str, dict[Language, str]] = {
     "status.publishing": {"zh": "正在发布 PR 评论...", "en": "Publishing PR comment..."},
     "status.published": {"zh": "已发布评论", "en": "Published comment"},
     "status.publish_failed": {"zh": "发布评论失败", "en": "Failed to publish comment"},
+    "status.model_key_required": {
+        "zh": "请输入 DeepSeek 或 OpenAI API Key 后再继续。",
+        "en": "Enter a DeepSeek or OpenAI API key before continuing.",
+    },
+    "status.credentials_saved": {
+        "zh": "已保存本地凭据配置",
+        "en": "Saved local credential configuration",
+    },
+    "status.credentials_save_failed": {
+        "zh": "保存凭据失败",
+        "en": "Failed to save credentials",
+    },
+    "status.credentials_pipeline_failed": {
+        "zh": "凭据已保存，但管道构建失败",
+        "en": "Credentials saved, but pipeline setup failed",
+    },
+    "setup.title": {"zh": "首次配置：缺少必需模型 API Key", "en": "First-run setup: model API key missing"},
+    "setup.required": {
+        "zh": "DeepSeek 和 OpenAI 二选一即可；TUI 会保存到本地 .env，后续 CLI/TUI 会自动加载。",
+        "en": "Choose either DeepSeek or OpenAI. The TUI saves it to local .env, which later CLI/TUI runs load automatically.",
+    },
+    "setup.optional": {
+        "zh": "Tavily 与 GitHub token 可选；不填也能审查公开 PR，但私有 PR、发布评论和更高 GitHub API 额度需要 GitHub 登录态。",
+        "en": "Tavily and GitHub tokens are optional. Public PR review works without them; private PRs, comment publishing, and higher GitHub API limits need GitHub auth.",
+    },
+    "setup.github_help": {
+        "zh": "GitHub token 推荐运行 gh auth login；手动 fine-grained token 至少给 Pull requests: read 或 Contents: read，发布评论再加 Issues: write。",
+        "en": "Recommended GitHub setup: run gh auth login. For a manual fine-grained token, grant Pull requests: read or Contents: read, plus Issues: write for comment publishing.",
+    },
     "phase.fetch": {"zh": "获取 PR", "en": "Fetch PR"},
     "phase.parse": {"zh": "解析 Diff", "en": "Parse Diff"},
     "phase.rules": {"zh": "规则扫描", "en": "Rule Scan"},
