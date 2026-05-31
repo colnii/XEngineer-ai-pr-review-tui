@@ -13,6 +13,13 @@ _MISSING = object()
 
 @contextmanager
 def loaded_dotenv(start: Path | None = None) -> Iterator[Path | None]:
+    """Load the nearest project .env while a CLI command is running.
+
+    The parser intentionally supports the local-development subset this project
+    documents: KEY=value lines, optional export prefixes, quotes, and inline
+    comments. Multiline values and full shell expansion are out of scope.
+    """
+
     env_path = find_dotenv(start or Path.cwd())
     if env_path is None:
         yield None
