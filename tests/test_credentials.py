@@ -7,7 +7,8 @@ from xengineer_pr_review.credentials import (
 )
 
 
-def test_credential_status_requires_deepseek_or_openai(monkeypatch) -> None:
+def test_credential_status_requires_deepseek_or_openai(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
     for key in (
         "DEEPSEEK_API_KEY",
         "OPENAI_API_KEY",
