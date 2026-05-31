@@ -560,19 +560,16 @@ def _evidence_items_from_text(text: str) -> list[EvidenceReference]:
             items.append(EvidenceReference(kind="pr_activity", label=label, url=url))
         elif url:
             items.append(EvidenceReference(kind="web", label=label, url=url))
-    if not any(
-        reference.kind in {"web", "pr_activity"} and reference.url for reference in items
-    ):
-        web_match = re.search(r"(?P<url>https?://[^\s;]+)", text)
-    else:
-        web_match = None
-    if web_match:
-        items.append(
-            EvidenceReference(
-                kind="web",
-                url=web_match.group("url").rstrip(".,)"),
-            )
-        )
+    captured_urls = {
+        reference.url
+        for reference in items
+        if reference.kind in {"web", "pr_activity"} and reference.url
+    }
+    for web_match in re.finditer(r"(?P<url>https?://[^\s;]+)", text):
+        url = web_match.group("url").rstrip(".,)")
+        if url not in captured_urls:
+            items.append(EvidenceReference(kind="web", url=url))
+            captured_urls.add(url)
     return items
 
 

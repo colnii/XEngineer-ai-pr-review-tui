@@ -109,6 +109,18 @@ def build_llm_context(
         for file_id, path in file_ids.items()
     ]
     file_blocks: list[str] = []
+    activity_context = "\n".join(format_pr_activity_lines(pr.activities))
+    if pr.activities:
+        activity_context = "\n".join(
+            [
+                (
+                    "If prior PR comments, reviews, commits, or timeline events affect your "
+                    "review, call read_pr_activity to get citeable [A1] IDs and cite those IDs "
+                    "as pr_activity evidence in the final JSON."
+                ),
+                activity_context,
+            ]
+        )
 
     for file in included:
         hunk_text = "\n".join(file.hunks)
@@ -129,7 +141,7 @@ def build_llm_context(
             f"Author: {pr.author}",
             f"Branches: {pr.base_branch} <- {pr.head_branch}",
             "Rule findings:\n" + ("\n".join(finding_lines) if finding_lines else "- none"),
-            "PR activity history:\n" + "\n".join(format_pr_activity_lines(pr.activities)),
+            "PR activity history:\n" + activity_context,
             "Changed file index:\n" + ("\n".join(file_index_lines) if file_index_lines else "- none"),
             "Changed files:\n" + "\n\n".join(file_blocks),
             "Return concise review output with summary, risks, and reviewer suggestions.",

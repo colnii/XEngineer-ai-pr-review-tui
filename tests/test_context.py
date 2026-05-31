@@ -106,6 +106,8 @@ def test_context_includes_pull_request_activity_history() -> None:
     context = build_llm_context(pr, findings=[], max_hunk_chars=100)
 
     assert "PR activity history:" in context.prompt
+    assert "call read_pr_activity" in context.prompt
+    assert "pr_activity evidence" in context.prompt
     assert "conversation by reviewer at 2026-05-30T10:00:00Z" in context.prompt
     assert "Please rerun the review from the PR page." in context.prompt
     assert "inline by maintainer on action.yml:57" in context.prompt

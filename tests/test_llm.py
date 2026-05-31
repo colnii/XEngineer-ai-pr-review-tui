@@ -328,6 +328,25 @@ def test_parse_llm_markdown_pr_activity_url_does_not_duplicate_as_web_evidence()
     assert evidence[0].url == "https://github.com/owner/repo/pull/1#issuecomment-10"
 
 
+def test_parse_llm_markdown_keeps_distinct_bare_url_with_pr_activity_url() -> None:
+    result = parse_llm_output(
+        """
+        ### Summary
+        The PR cites prior activity and docs.
+
+        ### Risks
+        - Low: Prior comment applies. Evidence: [A2] https://github.com/owner/repo/pull/1#issuecomment-10 and https://docs.example.com/parser
+        """
+    )
+
+    evidence = result.risks[0].evidence
+    assert len(evidence) == 2
+    assert evidence[0].kind == "pr_activity"
+    assert evidence[0].url == "https://github.com/owner/repo/pull/1#issuecomment-10"
+    assert evidence[1].kind == "web"
+    assert evidence[1].url == "https://docs.example.com/parser"
+
+
 def test_parse_llm_json_output_embedded_in_markdown_fence() -> None:
     result = parse_llm_output(
         """
