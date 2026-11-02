@@ -33,6 +33,10 @@ The npm wrapper creates and reuses an internal Python virtual environment in the
 then runs the existing Python CLI. Set `XENGINEER_PYTHON=/path/to/python` if Python 3.12+
 is not autodetected.
 
+If no model key is configured, the TUI opens a first-run setup panel that can save the
+model key plus optional `TAVILY_API_KEY` and `GITHUB_TOKEN` values to the nearest
+project `.env`.
+
 For contributor development, the Python console script is still available:
 
 ```bash
@@ -54,12 +58,15 @@ developer mode so the `socksio` dependency is installed.
 - LLM-assisted summary and suggestions.
 - PR conversation comments, review bodies, inline review comments, timeline events,
   and commit messages are included as review context.
-- Structured evidence on findings/suggestions: code file line ranges and web citation URLs when available.
+- Structured evidence on findings/suggestions with `kind` `code`, `web`, or `pr_activity`:
+  code file line ranges and GitHub blob URLs, web citations such as `[W1]`, and PR
+  activity citations such as `[A1]` when available.
 - Markdown export.
 - Manual PR conversation comment publishing after human confirmation, with an optional
   pull request review body mode.
 - GitHub Action integration that publishes one PR comment when a PR is opened, reopened,
   marked ready for review, or manually requested with `/xengineer review` on the PR page.
+- Default Chinese interface with an English/Chinese toggle.
 
 ## Usage
 
@@ -77,12 +84,6 @@ The zero-configuration judge demo also supports the same headless path:
 
 ```bash
 npx xengineer-pr-review --judge-demo --output -
-```
-
-The TUI defaults to Chinese. To start in English:
-
-```bash
-npx xengineer-pr-review --language en
 ```
 
 For real model output:
@@ -105,8 +106,8 @@ Real model mode uses a LangGraph-backed review agent. During the LLM review step
 may call bounded read-only tools to inspect files at the PR head commit or grep repository code
 before returning the final structured report. The normal stop condition is the model returning a
 final report without more tool calls; hard limits or tool errors are surfaced in report warnings.
-The final report can carry structured evidence objects so code line references and web citations
-survive export instead of staying only in the model transcript.
+The final report can carry structured evidence objects so code line references, web citations,
+and PR activity citations survive export instead of staying only in the model transcript.
 
 Optional web search can be enabled with Tavily:
 
@@ -125,8 +126,8 @@ npx xengineer-pr-review
 
 You can also use `GH_TOKEN`, or run `gh auth login` so the app can read the local
 login with `gh auth token`. Fine-grained tokens need at least `Pull requests: read`
-or `Contents: read` on the target repository. The TUI does not enter, display, or
-store tokens.
+or `Contents: read` on the target repository. The TUI masks secret inputs and never
+prints token values.
 
 To publish the generated report as a top-level PR conversation comment, configure
 a token and use the TUI `Publish Comment` button after analysis. The TUI publish
@@ -198,6 +199,7 @@ jobs:
         (
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
+          github.event.issue.state == 'open' &&
           (
             github.event.comment.author_association == 'OWNER' ||
             github.event.comment.author_association == 'MEMBER' ||
@@ -254,6 +256,20 @@ Paste a PR URL such as:
 https://github.com/Textualize/textual/pull/1
 ```
 
+## Language Switching
+
+The TUI defaults to Chinese. The `English` button in the TUI header switches to English;
+in English mode the button shows `中文`.
+
+You can also set the language from the command line:
+
+```bash
+npx xengineer-pr-review --language zh
+npx xengineer-pr-review --language en
+```
+
+The exported `review-report.md` uses the current TUI language.
+
 ## Architecture
 
 - TUI: terminal input, progress, display, export.
@@ -277,7 +293,7 @@ These services are integrated through this project code and are not embedded thi
 
 Original project work includes PR URL parsing, unified diff parsing, deterministic rule analysis, context trimming,
 report aggregation/export, Chinese/English TUI presentation, manual PR comment publishing, the LangGraph review client
-integration, bounded `read_file`/`grep_code`/`web_search` tool behavior, GitHub file/tree adapters, safety limits,
+integration, bounded `read_file`/`grep_code`/`read_pr_activity`/`web_search` tool behavior, GitHub file/tree adapters, safety limits,
 fallback warnings, the npm wrapper, and the fake-client test suite. Third-party libraries provide infrastructure;
 the PR review product workflow and tool policies are implemented in this repository.
 
@@ -286,7 +302,8 @@ the PR review product workflow and tool policies are implemented in this reposit
 The app uses DeepSeek when `DEEPSEEK_API_KEY` is present, otherwise it uses OpenAI when
 `OPENAI_API_KEY` is present. DeepSeek uses the OpenAI-compatible Chat Completions API with
 `https://api.deepseek.com` by default; override `DEEPSEEK_BASE_URL` only for a compatible
-gateway. `DEEPSEEK_MODEL` defaults to `deepseek-v4-flash`. The CLI loads the nearest
+gateway. `DEEPSEEK_MODEL` defaults to `deepseek-v4-flash`, `OPENAI_MODEL` to
+`gpt-4.1-mini`, and `XENGINEER_MAX_TOOL_ROUNDS` to `40`. The CLI loads the nearest
 project `.env` before building the review pipeline; values in `.env` override temporary shell
 exports for that command. Copy `.env.example` to `.env` for local credentials. The `.env`
 file is ignored by git and should not be committed.
