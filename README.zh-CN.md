@@ -31,6 +31,9 @@ npm wrapper 会在用户缓存目录里自动创建并复用内部 Python virtua
 然后运行现有 Python CLI。如果没有自动找到 Python 3.12+，可以设置
 `XENGINEER_PYTHON=/path/to/python`。
 
+如果没有配置模型 key，首次启动时 TUI 会打开配置面板，可把模型 key 以及可选的
+`TAVILY_API_KEY`、`GITHUB_TOKEN` 保存到最近的项目 `.env`。
+
 如果是贡献者开发，仍然可以使用 Python console script（命令行入口）：
 
 ```bash
@@ -52,7 +55,7 @@ xpr-review
 - 使用 LLM 生成摘要和审查建议。
 - 会把 PR Conversation 评论、review 正文、行内 review comment、timeline 事件和 commit message
   纳入审查上下文。
-- 审查项支持结构化 evidence（证据）：代码文件行号范围和可用的 web 引用 URL。
+- 审查项支持结构化 evidence（证据），`kind` 可为 `code`、`web` 或 `pr_activity`：代码文件行号范围和 GitHub blob URL、web 引用（如 `[W1]`）、PR 活动引用（如 `[A1]`）。
 - 支持 Markdown 报告导出。
 - 支持人工确认后发布 PR 顶层 Conversation 评论，也可选择发布为 PR review 正文。
 - 支持作为 GitHub Action 集成到其他仓库，在 PR 创建、重新打开、标记 ready for review，
@@ -96,7 +99,7 @@ npx xengineer-pr-review
 阶段，模型可以主动调用只读工具，读取 PR head commit 上的文件，或 grep（按文本/正则搜索）
 仓库代码；当模型不再请求工具并返回最终结构化报告时，审查正常结束。若因为工具轮数上限、
 工具失败等硬性因素收束，报告会在 warnings 中说明。
-最终报告可以保留结构化 evidence，让代码行号和 web 引用跟随风险/建议进入 TUI 和 Markdown，
+最终报告可以保留结构化 evidence，让代码行号、web 引用和 PR 活动引用（`[A1]`）跟随风险/建议进入 TUI 和 Markdown，
 而不是只停留在模型临时上下文里。
 
 如需启用可选 web search（联网搜索），配置 Tavily：
@@ -115,7 +118,7 @@ npx xengineer-pr-review
 
 也可以使用 `GH_TOKEN`，或先运行 `gh auth login`，让应用通过 `gh auth token` 读取本机登录态。
 细粒度 token 至少需要目标仓库的 `Pull requests: read` 或 `Contents: read` 权限。
-TUI 不会输入、显示或保存 token。
+TUI 会隐藏密钥输入内容，也不会在界面或报告中打印 token 值。
 
 如需把生成的报告发布为 PR 顶层 Conversation 评论，请先配置 GitHub token，然后在分析
 完成后点击 TUI 的 `发布评论` 按钮。TUI 里也可以把发布目标切到 `PR Review`，并用
@@ -180,6 +183,7 @@ jobs:
         (
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
+          github.event.issue.state == 'open' &&
           (
             github.event.comment.author_association == 'OWNER' ||
             github.event.comment.author_association == 'MEMBER' ||
@@ -224,7 +228,7 @@ npx xengineer-pr-review init-action --repo-path /path/to/target/repo
 如果命令就在目标仓库里执行，可以省略 `--repo-path`。如果要生成发布 PR review 正文的
 workflow，使用 `--comment-mode review`；如果要选择 review 状态，使用
 `--review-action comment|approve|request-changes`；如果要启用行内 AI review 评论，使用
-`--inline-comments`。如果要指向 fork、分支或发布版本，用 `--action-uses owner/repo@ref`；
+`--inline-comments`；如果要生成英文报告的 workflow，用 `--language en`。如果要指向 fork、分支或发布版本，用 `--action-uses owner/repo@ref`；
 只有确认要替换已有文件时才加 `--overwrite`。
 
 启动后粘贴 PR 地址，例如：
@@ -269,7 +273,7 @@ npx xengineer-pr-review --language en
 
 本项目原创实现包括 PR URL 解析、unified diff 解析、确定性规则分析、上下文裁剪、报告聚合与导出、
 中英文 TUI 展示、人工确认后发布 PR 评论、LangGraph review client 集成、有边界的
-`read_file`/`grep_code`/`web_search` 工具行为、GitHub 文件/目录树 adapter、安全限制、fallback warning
+`read_file`/`grep_code`/`read_pr_activity`/`web_search` 工具行为、GitHub 文件/目录树 adapter、安全限制、fallback warning
 、npm wrapper 以及 fake client 测试体系。第三方库提供基础设施；PR Review 产品流程和工具策略由本仓库实现。
 
 ## 模型选择
@@ -277,7 +281,8 @@ npx xengineer-pr-review --language en
 当存在 `DEEPSEEK_API_KEY` 时，应用优先使用 DeepSeek；否则在存在 `OPENAI_API_KEY`
 时使用 OpenAI。DeepSeek 走 OpenAI-compatible Chat Completions API（兼容 OpenAI
 聊天补全格式的接口），默认 `base_url` 是 `https://api.deepseek.com`；只有接入兼容网关时
-才需要覆盖 `DEEPSEEK_BASE_URL`。`DEEPSEEK_MODEL` 默认是 `deepseek-v4-flash`。
+才需要覆盖 `DEEPSEEK_BASE_URL`。`DEEPSEEK_MODEL` 默认是 `deepseek-v4-flash`；
+`OPENAI_MODEL` 默认是 `gpt-4.1-mini`，`XENGINEER_MAX_TOOL_ROUNDS` 默认是 `40`。
 CLI 会在构建 review pipeline 前加载最近的项目 `.env`；`.env` 里的值会覆盖本次命令里的
 临时 shell export。把 `.env.example` 复制为 `.env` 后填写本机密钥即可；`.env` 已被
 git 忽略，不应提交。
@@ -305,6 +310,14 @@ ID（例如 `[A1]`）；`web_search` 会返回稳定 ID（例如 `[W1]`）、URL
 - `read_pr_activity`：读取已抓取的 PR 评论、review、行内评论、timeline 事件和 commit，
   可按类型过滤；返回的 `[A1]` ID 可在最终报告中作为 `pr_activity` 证据引用。
 - `web_search`：仅在配置 `TAVILY_API_KEY` 后搜索公开网页上下文。
+
+例如，一条引用了 PR 评论的审查项会在导出报告里渲染出 `pr_activity` 证据：
+
+```markdown
+- **严重程度:** 低
+  - **证据:**
+    - [A1] [conversation by reviewer at 2026-05-31T15:12:37Z](https://github.com/owner/repo/pull/1#issuecomment-123)
+```
 
 ## 限制
 

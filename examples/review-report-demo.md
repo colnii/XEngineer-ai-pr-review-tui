@@ -22,11 +22,15 @@
   - **标题:** 非标准文件包装器仍可能存在流检测兼容性边界情况
   - **说明:** 非标准文件包装器仍可能存在流检测兼容性边界情况。
   - **相关文件:** `src/requests/models.py`
+  - **证据:**
+    - [`src/requests/models.py:596-604`](https://github.com/psf/requests/blob/ea1c36c1b1a8364e234b6ad49ea05e3261636f8a/src/requests/models.py#L596-L604)
 - **严重程度:** 低
   - **来源:** AI
   - **标题:** 回归测试可能没有覆盖所有 urllib3 adapter 路径
   - **说明:** 回归测试可能没有覆盖所有 urllib3 adapter 路径。
   - **相关文件:** `tests/test_requests.py`
+  - **证据:**
+    - [`tests/test_requests.py:2073-2093`](https://github.com/psf/requests/blob/ea1c36c1b1a8364e234b6ad49ea05e3261636f8a/tests/test_requests.py#L2073-L2093)
 
 ### 规则信号
 
@@ -37,10 +41,14 @@
 - **类型:** 测试
   - **建议:** 增加或保留一个断言，验证动态属性包装器会作为 stream 发送，而不是被提前消费。
   - **相关文件:** `tests/test_requests.py`
+  - **证据:**
+    - [`tests/test_requests.py:2073-2093`](https://github.com/psf/requests/blob/ea1c36c1b1a8364e234b6ad49ea05e3261636f8a/tests/test_requests.py#L2073-L2093)
   - **置信度:** 高
 - **类型:** 可维护性
   - **建议:** 保持 stream 检测 helper 的命名只围绕它检查的文件类行为。
   - **相关文件:** `src/requests/models.py`
+  - **证据:**
+    - [`src/requests/models.py:596-604`](https://github.com/psf/requests/blob/ea1c36c1b1a8364e234b6ad49ea05e3261636f8a/src/requests/models.py#L596-L604)
   - **置信度:** 中
 
 ## 变更文件
@@ -50,4 +58,4 @@
 
 ## 覆盖说明
 
-- 所有变更文件都已包含在 LLM 上下文中。
+- 所有适合审查的变更文件都已包含在 LLM 上下文中。
