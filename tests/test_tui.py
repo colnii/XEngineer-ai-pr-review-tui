@@ -5,9 +5,15 @@ from textual.widgets import Input, Static
 
 from xengineer_pr_review.credentials import CredentialStatus
 from xengineer_pr_review.llm import MockLLMClient
-from xengineer_pr_review.models import PostedComment, ReviewFinding, ReviewReport, ReviewSuggestion
+from xengineer_pr_review.models import (
+    EvidenceReference,
+    PostedComment,
+    ReviewFinding,
+    ReviewReport,
+    ReviewSuggestion,
+)
 from xengineer_pr_review.pipeline import ReviewPipeline
-from xengineer_pr_review.tui import ReviewTUI
+from xengineer_pr_review.tui import ReviewTUI, _format_evidence_text
 
 
 class PostingPipeline:
@@ -64,6 +70,24 @@ def test_tui_accepts_missing_pipeline_for_first_run_onboarding() -> None:
 
     assert app.pipeline is None
     assert app.credentials_required is True
+
+
+def test_tui_formats_pr_activity_evidence_with_citation_id() -> None:
+    text = _format_evidence_text(
+        EvidenceReference(
+            kind="pr_activity",
+            label="A1",
+            title="conversation by reviewer at 2026-05-30T10:00:00Z",
+            url="https://github.com/owner/repo/pull/1#issuecomment-10",
+            snippet="Please rerun after the latest push.",
+        )
+    )
+
+    assert text == (
+        "A1: conversation by reviewer at 2026-05-30T10:00:00Z "
+        "https://github.com/owner/repo/pull/1#issuecomment-10"
+        " - Please rerun after the latest push."
+    )
 
 
 def test_tui_auto_analyzes_on_mount_when_initial_url_is_set(monkeypatch) -> None:

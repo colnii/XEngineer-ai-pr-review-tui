@@ -141,6 +141,8 @@ def _render_evidence(evidence: list[EvidenceReference], language: str) -> list[s
 def _format_evidence(reference: EvidenceReference) -> str:
     if reference.kind == "web":
         return _format_web_evidence(reference)
+    if reference.kind == "pr_activity":
+        return _format_pr_activity_evidence(reference)
     return _format_code_evidence(reference)
 
 
@@ -162,6 +164,18 @@ def _format_code_evidence(reference: EvidenceReference) -> str:
 def _format_web_evidence(reference: EvidenceReference) -> str:
     label_text = f"[{reference.label}] " if reference.label else ""
     title = reference.title or reference.url or "Web source"
+    if reference.url:
+        text = f"{label_text}[{title}]({reference.url})"
+    else:
+        text = f"{label_text}{title}"
+    if reference.snippet:
+        text += f" - {reference.snippet}"
+    return text
+
+
+def _format_pr_activity_evidence(reference: EvidenceReference) -> str:
+    label_text = f"[{reference.label}] " if reference.label else ""
+    title = reference.title or reference.url or "PR activity"
     if reference.url:
         text = f"{label_text}[{title}]({reference.url})"
     else:

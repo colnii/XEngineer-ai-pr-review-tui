@@ -607,9 +607,10 @@ class ReviewTUI(App):
 
 
 def _format_evidence_text(reference: EvidenceReference) -> str:
-    if reference.kind == "web":
+    if reference.kind in {"web", "pr_activity"}:
         label_text = f"{reference.label}: " if reference.label else ""
-        title = reference.title or reference.url or "web source"
+        fallback_title = "PR activity" if reference.kind == "pr_activity" else "web source"
+        title = reference.title or reference.url or fallback_title
         url_text = f" {reference.url}" if reference.url and reference.url != title else ""
         snippet = f" - {reference.snippet}" if reference.snippet else ""
         return f"{label_text}{title}{url_text}{snippet}"
