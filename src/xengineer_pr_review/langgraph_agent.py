@@ -170,6 +170,11 @@ class LangGraphReviewClient:
             tool_names = "read_file, grep_code, and read_pr_activity"
             if _web_search_enabled(toolbox):
                 tool_names = "read_file, grep_code, read_pr_activity, and web_search"
+                system += (
+                    " When the PR changes external API endpoints, dependency versions, "
+                    "security advisories, public docs claims, pricing, rate limits, "
+                    "or other current external facts, you must call web_search before finalizing."
+                )
             system += (
                 f" You may call {tool_names} when the diff is not enough. "
                 "Prefer read_file file_id values from the changed file index instead of copying paths. "

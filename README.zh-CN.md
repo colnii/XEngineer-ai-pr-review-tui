@@ -17,6 +17,7 @@ npx xengineer-pr-review --judge-demo
 TUI 会自动填入演示 PR 地址并开始分析，可直接检查产品主链路、报告结构、风险识别、
 审查建议和 Markdown 导出。
 如果是在 npm 包发布前从本仓库 checkout 里运行，用 `npx . --judge-demo`。
+演示视频：[Bilibili](https://www.bilibili.com/video/BV1eTVQ6iEEN/)。
 
 ### 普通本地运行
 

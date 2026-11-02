@@ -19,6 +19,7 @@ npx xengineer-pr-review --judge-demo
 The TUI opens with a demo PR URL prefilled and starts analysis automatically. Use this path
 to verify the product flow, report structure, risk signals, suggestions, and Markdown export.
 When running from a cloned checkout before publishing the npm package, use `npx . --judge-demo`.
+Demo video: [Bilibili](https://www.bilibili.com/video/BV1eTVQ6iEEN/).
 
 ### Normal Local Run
 
