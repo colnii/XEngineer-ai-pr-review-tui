@@ -311,6 +311,14 @@ ID（例如 `[A1]`）；`web_search` 会返回稳定 ID（例如 `[W1]`）、URL
   可按类型过滤；返回的 `[A1]` ID 可在最终报告中作为 `pr_activity` 证据引用。
 - `web_search`：仅在配置 `TAVILY_API_KEY` 后搜索公开网页上下文。
 
+例如，一条引用了 PR 评论的审查项会在导出报告里渲染出 `pr_activity` 证据：
+
+```markdown
+- **严重程度:** 低
+  - **证据:**
+    - [A1] [conversation by reviewer at 2026-05-31T15:12:37Z](https://github.com/owner/repo/pull/1#issuecomment-123)
+```
+
 ## 限制
 
 - 私有仓库 PR 需要本机 token 具备目标仓库读取权限；权限不足时 GitHub 可能返回 404。

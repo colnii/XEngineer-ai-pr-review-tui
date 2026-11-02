@@ -338,6 +338,15 @@ When a real model is configured, the LangGraph agent can request extra context w
   evidence in the final report.
 - `web_search`: search public web context only when `TAVILY_API_KEY` is configured.
 
+For example, a finding that cites a PR conversation comment renders `pr_activity`
+evidence in the exported report as:
+
+```markdown
+- **Severity:** low
+  - **Evidence:**
+    - [A1] [conversation by reviewer at 2026-05-31T15:12:37Z](https://github.com/owner/repo/pull/1#issuecomment-123)
+```
+
 ## Limitations
 
 - Private repository PRs require a local token with read access; GitHub may return
